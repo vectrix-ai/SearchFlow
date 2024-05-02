@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "paginx"
+version = "0.1.0"
+description = "An assistant helping you to index webpages into structured datasets."
+authors = ["Ben Selleslagh <ben@dataframe.be>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+langchain = "^0.1.17"
+bs4 = "^0.0.2"
+validators = "^0.28.1"
+trafilatura = "^1.9.0"
+tiktoken = "^0.6.0"
+replicate = "^0.25.2"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.4"
+python-dotenv = "^1.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
