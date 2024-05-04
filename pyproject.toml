@@ -20,6 +20,7 @@ replicate = "^0.25.2"
 langchain-cohere = "^0.1.4"
 langchain-postgres = "^0.0.3"
 psycopg-binary = "^3.1.18"
+fake-useragent = "^1.5.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"

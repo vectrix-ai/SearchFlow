@@ -1,12 +1,12 @@
 from urllib.parse import urlparse
 from langchain_community.document_loaders import AsyncHtmlLoader
 from bs4 import BeautifulSoup
-import validators
+import validators, json
 from trafilatura import extract
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-
+from paginx.page_crawler.models.site_pages import PageData
 
 class Crawler:
     """
@@ -145,6 +145,6 @@ class Crawler:
             # Apply the excract method to each element of the list
             docs_transformed = [extract(doc.page_content, output_format="json", include_comments=False) for doc in processed_pages]
             
-            #html2text = Html2TextTransformer()
-            #docs_transformed = html2text.transform_documents(processed_pages)
+            # Convert each doc to the PageData object
+            docs_transformed = [PageData(**json.loads(doc)) for doc in docs_transformed]
             return docs_transformed

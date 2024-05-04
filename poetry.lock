@@ -570,6 +570,17 @@ files = [
 tests = ["asttokens (>=2.1.0)", "coverage", "coverage-enable-subprocess", "ipython", "littleutils", "pytest", "rich"]
 
 [[package]]
+name = "fake-useragent"
+version = "1.5.1"
+description = "Up-to-date simple useragent faker with real world database"
+optional = false
+python-versions = "*"
+files = [
+    {file = "fake-useragent-1.5.1.tar.gz", hash = "sha256:6387269f5a2196b5ba7ed8935852f75486845a1c95c50e72460e6a8e762f5c49"},
+    {file = "fake_useragent-1.5.1-py3-none-any.whl", hash = "sha256:57415096557c8a4e23b62a375c21c55af5fd4ba30549227f562d2c4f5b60e3b3"},
+]
+
+[[package]]
 name = "fastavro"
 version = "1.9.4"
 description = "Fast read/write of AVRO files"
@@ -3736,4 +3747,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "5492fbb5a847895a99ee8dda8b8f3d99c90356eb637b5964080c8f7bb754f494"
+content-hash = "fa13852f6f237beb713b6f798fa2f4f48d2a53ffd78afa107875804b2ddce5c3"
