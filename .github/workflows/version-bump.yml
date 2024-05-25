@@ -27,6 +27,11 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
       - name: Bump version
         run: |
           bump2version patch  # Change to `minor` or `major` as needed
