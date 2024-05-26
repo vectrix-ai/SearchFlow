@@ -24,5 +24,8 @@ jobs:
       - name: Build package
         run: poetry build
 
+      - name: Configure Poetry to use PyPI token
+        run: poetry config pypi-token.pypi ${{ secrets.PYPYTOKEN }}
+
       - name: Publish to PyPI
         run: poetry publish
