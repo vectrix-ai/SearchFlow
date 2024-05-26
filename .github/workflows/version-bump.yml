@@ -27,15 +27,8 @@ jobs:
           VERSION=$(poetry version -s)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Authenticate GitHub CLI
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          echo $GITHUB_TOKEN | gh auth login --with-token
-
       - name: Create GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           VERSION: ${{ env.VERSION }}
         run: |
           if [ ! -z "$VERSION" ]; then
