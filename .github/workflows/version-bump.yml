@@ -29,6 +29,7 @@ jobs:
 
       - name: Create GitHub Release
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ env.VERSION }}
         run: |
           if [ ! -z "$VERSION" ]; then
