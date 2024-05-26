@@ -27,19 +27,17 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
 
-      - name: Configure Git
+      - name: Extract version number
+        id: extract_version
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          version=$(poetry version -s)
+          echo "VERSION=$version" >> $GITHUB_ENV
+
+      - name: Create and push tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
           git config --global user.name "github-actions[bot]"
-
-      - name: Bump version
-        run: |
-          bump2version patch  # Change to `minor` or `major` as needed
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push changes
-        run: |
-          git push --follow-tags
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
