@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "paginx"
-version = "0.1.54"
+version = "0.1.55"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -11,17 +11,17 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
-langchain = "^0.1.547"
+langchain = "^0.1.557"
 bs4 = "^0.0.2"
 validators = "^0.28.1"
 trafilatura = "^1.9.0"
 tiktoken = "^0.6.0"
 replicate = "^0.25.2"
-langchain-cohere = "^0.1.54"
+langchain-cohere = "^0.1.55"
 langchain-postgres = "^0.0.3"
 psycopg-binary = "^3.1.18"
 fake-useragent = "^1.5.1"
-langchain-openai = "^0.1.54"
+langchain-openai = "^0.1.55"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
