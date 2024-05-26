@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "paginx"
-version = "0.0.5"
+version = "0.0.6"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
