@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "paginx"
-version = "0.0.9"
+version = "0.0.10"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -10,8 +10,9 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12,<3.13"
 langchain = "*"
+protobuf = "<=3.20.*"
 bs4 = "^0.0.2"
 validators = "^0.28.1"
 trafilatura = "^1.9.0"
@@ -22,6 +23,8 @@ langchain-postgres = "^0.0.3"
 psycopg-binary = "^3.1.18"
 fake-useragent = "^1.5.1"
 langchain-openai = "*"
+langchain-chroma = "^0.1.1"
+chroma = "^0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"

@@ -2,12 +2,7 @@
 
 ![GitHub License](https://img.shields.io/github/license/vectrix-ai/paginx) ![PyPI - Version](https://img.shields.io/pypi/v/paginx) ![GitHub Tag](https://img.shields.io/github/v/tag/vectrix-ai/paginx)
 
-
-
  Paginx is an innovative Python-based project that leverages the power of Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) to provide intelligent question-answering capabilities for any given website. By simply entering a website URL, users can interact with an AI assistant that can answer questions and provide insights based on the content of the website.
-
-
-
 
 ## Setting Up a PostgreSQL instance with the pgvector Extension
 To store the uploaded data for later retrieval (for example during RAG), you need to set up a PostgreSQL database with the pgvector extension enabled. This chapter guides you through the steps to install PostgreSQL, enable the pgvector extension, create a new database, and store the connection string as a URL. Alternatively, you can use hosted PostgreSQL instances provided by many cloud providers.
