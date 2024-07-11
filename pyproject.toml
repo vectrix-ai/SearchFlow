@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "paginx"
-version = "0.0.11"
+version = "0.0.12"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -27,6 +27,7 @@ tiktoken = "^0.7.0"
 langchain-openai = "^0.1.14"
 langchain-community = "^0.2.7"
 langgraph = "^0.1.6"
+langserve = {extras = ["all"], version = "^0.2.2"}
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
