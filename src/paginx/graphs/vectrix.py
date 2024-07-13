@@ -1,20 +1,20 @@
-from typing import List, Literal, AsyncIterator, Dict, Any
+from typing import List, Literal
 from typing_extensions import TypedDict
-from langchain_core.tools import tool
-from langgraph.prebuilt import ToolNode
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_cohere import CohereEmbeddings
-from langchain_community.vectorstores import Chroma
+from paginx.db.chroma import Chroma
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain import hub
+from langgraph.graph.message import add_messages
+from typing import Annotated
+import os
 
 class GraphState(TypedDict):
-    question: str
+    messages: Annotated[list, add_messages]
     generation: str
     web_search: str
     documents: List[str]
@@ -36,7 +36,7 @@ class RAGWorkflowGraph:
 
     def _setup_retriever(self):
         chroma = Chroma(CohereEmbeddings())
-        vectorstore = chroma.load_db('../tmp_files')
+        vectorstore = chroma.load_db(os.getenv("CHROMA_DB_LOCATION"))
         return vectorstore.as_retriever()
 
     def _setup_rag_chain(self):
@@ -59,7 +59,11 @@ class RAGWorkflowGraph:
         return re_write_prompt | self.llm | StrOutputParser()
 
     async def retrieve(self, state: GraphState) -> GraphState:
-        docs = self.retriever.get_relevant_documents(state["question"])
+        question = state["messages"][-1].content
+
+
+        docs = self.retriever.get_relevant_documents(question)
+
         state["documents"] = [doc.page_content for doc in docs]
         return state
 
@@ -76,8 +80,9 @@ class RAGWorkflowGraph:
         retrieval_grader = grade_prompt | self.structured_llm_grader
         
         scores = []
+        question = state["messages"][-1].content
         for doc in state["documents"]:
-            result = await retrieval_grader.ainvoke({"question": state["question"], "document": doc})
+            result = await retrieval_grader.ainvoke({"question": question, "document": doc})
             scores.append(result.binary_score)
         
         state["relevance_scores"] = scores
@@ -91,21 +96,23 @@ class RAGWorkflowGraph:
 
     async def generate(self, state: GraphState) -> GraphState:
         context = "\n\n".join(state["documents"])
-        state["generation"] = await self.rag_chain.ainvoke({"context": context, "question": state["question"]})
+        question = state["messages"][-1].content
+        state["generation"] = await self.rag_chain.ainvoke({"context": context, "question": question})
         return state
 
     async def transform_query(self, state: GraphState) -> GraphState:
-        state["question"] = await self.question_rewriter.ainvoke({"question": state["question"]})
+        question = state["messages"][-1].content
+        state["question"] = await self.question_rewriter.ainvoke({"question": question})
         return state
 
     async def web_search(self, state: GraphState) -> GraphState:
-        results = await self.web_search_tool.ainvoke(state["question"])
+        question = state["messages"][-1].content
+        results = await self.web_search_tool.ainvoke(question)
         state["documents"] = [str(result) for result in results]
         return state
 
     def create_graph(self):
         workflow = StateGraph(GraphState)
-        
         workflow.add_node("retrieve", self.retrieve)
         workflow.add_node("grade_documents", self.grade_documents)
         workflow.add_node("generate", self.generate)

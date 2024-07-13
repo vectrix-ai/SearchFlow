@@ -53,5 +53,6 @@ class Chroma:
 
         """
         db = ChromaBase(persist_directory=persist_directory, embedding_function=self.embedding_function)
+
         return db
 
