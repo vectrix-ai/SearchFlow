@@ -1,7 +1,7 @@
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Literal, Optional
 from langchain_core.messages import HumanMessage
 from paginx.graphs.demo import DemoGraph
@@ -9,6 +9,23 @@ from paginx.graphs.vectrix import RAGWorkflowGraph
 import json, os
 from dotenv import load_dotenv
 from pathlib import Path
+from urllib.parse import urlparse
+import json
+
+
+
+def extract_chat_id(referer: str) -> str:
+    if not referer:
+        return None
+    
+    parsed_url = urlparse(referer)
+    path_parts = parsed_url.path.split('/')
+    
+    # The chat ID should be the second-to-last part of the path
+    if len(path_parts) >= 2:
+        return path_parts[-2]
+    
+    return None
 
 
 # Load environment variables from .env file two directories above
@@ -71,11 +88,33 @@ async def stream_response(model: str, messages: List[Message]):
         yield "data: [DONE]\n\n"
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(request: Request, chat_request: ChatCompletionRequest):
+    # Print request headers
+    print("Request Headers:")
+    for header, value in request.headers.items():
+        print(f"{header}: {value}")
+
+    # Print request body
+    body = await request.body()
+    print("\nRequest Body:")
+    try:
+        body_json = json.loads(body)
+        print(json.dumps(body_json, indent=2))
+    except json.JSONDecodeError:
+        print(body.decode())
+
+    # Print ChatCompletionRequest
+    print("\nChatCompletionRequest:")
+    print(chat_request.json(indent=2))
+
+    if not chat_id:
+        print(f"Unable to extract chat ID from referer: {referer}")
+        raise HTTPException(status_code=400, detail="Unable to extract chat ID from referer")
+
     if not request.stream:
         raise HTTPException(status_code=400, detail="Only streaming responses are supported")
 
-    return StreamingResponse(stream_response(request.model, request.messages), media_type="text/event-stream")
+    return StreamingResponse(stream_response(chat_request.model, chat_request.messages), media_type="text/event-stream")
 
 if __name__ == "__main__":
     import uvicorn
