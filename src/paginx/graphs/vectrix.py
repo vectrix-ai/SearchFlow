@@ -12,12 +12,18 @@ from langchain import hub
 from langgraph.graph.message import add_messages
 from typing import Annotated
 import os
+from psycopg_pool import AsyncConnectionPool
+from langchain.schema import Document
+from paginx.db.postgresql import BaseCheckpointSaver
+
+
 
 class GraphState(TypedDict):
     messages: Annotated[list, add_messages]
     generation: str
     web_search: str
     documents: List[str]
+    question: str
 
 class GradeDocuments(BaseModel):
     binary_score: str = Field(
@@ -25,14 +31,15 @@ class GradeDocuments(BaseModel):
     )
 
 class RAGWorkflowGraph:
-    def __init__(self):
+    def __init__(self, DB_URI: str):
         # Initialize components
+        self.DB_URI = DB_URI
         self.retriever = self._setup_retriever()
         self.web_search_tool = TavilySearchResults(k=3)
         self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
-        self.structured_llm_grader = self.llm.with_structured_output(GradeDocuments)
         self.rag_chain = self._setup_rag_chain()
         self.question_rewriter = self._setup_question_rewriter()
+        self.retrieval_grader = self._setup_retrieval_grader()
 
     def _setup_retriever(self):
         chroma = Chroma(CohereEmbeddings())
@@ -45,92 +52,173 @@ class RAGWorkflowGraph:
         return prompt | llm | StrOutputParser()
 
     def _setup_question_rewriter(self):
-        system = """You a question re-writer that converts an input question to a better version that is optimized \n 
-             for web search. Look at the input and try to reason about the underlying semantic intent / meaning."""
-        re_write_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system),
-                (
-                    "human",
-                    "Here is the initial question: \n\n {question} \n Formulate an improved question.",
-                ),
-            ]
-        )
+        re_write_prompt = hub.pull("joeywhelan/rephrase")
         return re_write_prompt | self.llm | StrOutputParser()
-
-    async def retrieve(self, state: GraphState) -> GraphState:
-        question = state["messages"][-1].content
-
-
-        docs = self.retriever.get_relevant_documents(question)
-
-        state["documents"] = [doc.page_content for doc in docs]
-        return state
-
-    async def grade_documents(self, state: GraphState) -> GraphState:
+    
+    def _setup_retrieval_grader(self):
         system = """You are a grader assessing relevance of a retrieved document to a user question. \n 
             If the document contains keyword(s) or semantic meaning related to the question, grade it as relevant. \n
             Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."""
+        
         grade_prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", system),
                 ("human", "Retrieved document: \n\n {document} \n\n User question: {question}"),
             ]
         )
-        retrieval_grader = grade_prompt | self.structured_llm_grader
-        
-        scores = []
-        question = state["messages"][-1].content
-        for doc in state["documents"]:
-            result = await retrieval_grader.ainvoke({"question": question, "document": doc})
-            scores.append(result.binary_score)
-        
-        state["relevance_scores"] = scores
-        return state
 
-    async def decide_to_generate(self, state: GraphState) -> Literal["transform_query", "generate"]:
-        if any(score == "yes" for score in state["relevance_scores"]):
-            return "generate"
+        structured_llm_grader = self.llm.with_structured_output(GradeDocuments)
+        return grade_prompt | structured_llm_grader
+    
+    async def transform_query(self, state):
+        '''
+        Transform the query to procude a better question
+
+        Agrs:
+            state: GraphState
+
+
+        Returns:
+            state (dict): Updates question key with a re-phrased question
+        '''    
+
+        question = state['question']
+        chat_history = state['messages']
+
+        # Rewrite the question
+        better_question = await self.question_rewriter.ainvoke({"input": question, "chat_history" : chat_history})
+        return {"question": better_question, "messages": question}
+    
+
+    async def retrieve(self, state):
+        '''
+        Retrieve documents relevant to the question
+
+        Args:
+            state: GraphState
+
+        Returns:
+            state (dict): Updates documents key with relevant documents
+        '''
+        question = state['question']
+        documents = await self.retriever.ainvoke(question)
+        return {"documents": documents}
+    
+    async def grade_documents(self, state):
+        '''
+        Grade the relevance of the retrieved documents to the question
+
+        Args:
+            state: GraphState
+
+        Returns:
+            state (dict): The filtered documents, web_search (yes/no)
+        '''
+
+        question = state['question']
+        documents = state['documents']
+
+        filtered_docs = []
+        web_search = "No"
+
+        for doc in documents:
+            score  = await self.retrieval_grader.ainvoke({"document": doc, "question": question})
+            grade = score.binary_score
+
+            if grade == "yes":
+                filtered_docs.append(doc)
+
+        if len(filtered_docs) == 0:
+            web_search = "Yes"
+
+        return {"documents": filtered_docs, "web_search": web_search}
+    
+
+    async def decide_to_search_web(self, state):
+        '''
+        Decide whether to search the web for more documents
+
+        Args:
+            state: GraphState
+
+        Returns:
+            state (dict): The web_search key is updated with 'generate' or 'web_search'
+        '''
+
+        web_search = state['web_search']
+        if web_search == "Yes":
+            return "web_search"
         else:
-            return "transform_query"
+            return "generate"
+        
 
-    async def generate(self, state: GraphState) -> GraphState:
-        context = "\n\n".join(state["documents"])
-        question = state["messages"][-1].content
-        state["generation"] = await self.rag_chain.ainvoke({"context": context, "question": question})
-        return state
+    async def search_web(self, state):
+        '''
+        Search the web for more documents
 
-    async def transform_query(self, state: GraphState) -> GraphState:
-        question = state["messages"][-1].content
-        state["question"] = await self.question_rewriter.ainvoke({"question": question})
-        return state
+        Args:
+            state: GraphState
 
-    async def web_search(self, state: GraphState) -> GraphState:
-        question = state["messages"][-1].content
-        results = await self.web_search_tool.ainvoke(question)
-        state["documents"] = [str(result) for result in results]
-        return state
+        Returns:
+            state (dict):  Updates documents key with appended web results
+        '''
 
-    def create_graph(self):
+        question = state['question']
+        documents = state['documents']
+
+        docs = await self.web_search_tool.ainvoke({"query": question})
+        web_results = "\n".join([d["content"] for d in docs])
+        web_results = Document(page_content=web_results)
+        documents.append(web_results)
+
+        return {"documents": documents}
+    
+
+    async def generate_response(self, state):
+        '''
+        Generate a response to the user
+
+        Args:
+            state: GraphState
+
+        Returns:
+            state (dict): The generation key is updated with the response
+        '''
+
+        documents = state['documents']
+        question = state['question']
+
+        response = await self.rag_chain.ainvoke({"context": documents, "question": question})
+        return {"generation": response}
+    
+
+    def create_graph(self, checkpointer: BaseCheckpointSaver):
         workflow = StateGraph(GraphState)
-        workflow.add_node("retrieve", self.retrieve)
-        workflow.add_node("grade_documents", self.grade_documents)
-        workflow.add_node("generate", self.generate)
-        workflow.add_node("transform_query", self.transform_query)
-        workflow.add_node("web_search_node", self.web_search)
+        workflow.add_node("retrieve", self.retrieve)  # retrieve
+        workflow.add_node("grade_documents", self.grade_documents)  # grade documents
+        workflow.add_node("generate_response", self.generate_response)  # generatae
+        workflow.add_node("transform_query", self.transform_query)  # transform_query
+        workflow.add_node("search_web", self.search_web)  # web search
 
-        workflow.add_edge(START, "retrieve")
+        workflow.add_edge(START, "transform_query")
+        workflow.add_edge("transform_query", "retrieve")
         workflow.add_edge("retrieve", "grade_documents")
         workflow.add_conditional_edges(
             "grade_documents",
-            self.decide_to_generate,
+            self.decide_to_search_web,
             {
-                "transform_query": "transform_query",
-                "generate": "generate",
+                "web_search": "search_web",
+                "generate": "generate_response",
             },
         )
-        workflow.add_edge("transform_query", "web_search_node")
-        workflow.add_edge("web_search_node", "generate")
-        workflow.add_edge("generate", END)
+        workflow.add_edge("search_web", "generate_response")
+        workflow.add_edge("generate_response", END)
 
-        return workflow.compile()
+        return workflow.compile(checkpointer=checkpointer)
+
+
+
+
+
+
+    
