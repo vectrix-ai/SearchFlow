@@ -11,7 +11,7 @@ from langgraph.graph.message import add_messages
 from typing import Annotated
 from langchain.schema import Document
 from paginx.db.postgresql import BaseCheckpointSaver
-from paginx.db.vector_retriever import Retriever
+from paginx.db.retrievers import Retriever
 
 
 
@@ -31,7 +31,7 @@ class RAGWorkflowGraph:
     def __init__(self, DB_URI: str):
         # Initialize components
         self.DB_URI = DB_URI
-        self.retriever = Retriever(retriever="chroma").get_retriever()
+        self.retriever = Retriever(retriever_type="weaviate").get_retriever()
         self.web_search_tool = TavilySearchResults(k=3)
         self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
         self.rag_chain = self._setup_rag_chain()
