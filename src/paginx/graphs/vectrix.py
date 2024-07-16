@@ -1,20 +1,17 @@
-from typing import List, Literal
+from typing import List, Tuple
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_cohere import CohereEmbeddings
-from paginx.db.chroma import Chroma
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain import hub
 from langgraph.graph.message import add_messages
 from typing import Annotated
-import os
-from psycopg_pool import AsyncConnectionPool
 from langchain.schema import Document
 from paginx.db.postgresql import BaseCheckpointSaver
+from paginx.db.vector_retriever import Retriever
 
 
 
@@ -22,7 +19,7 @@ class GraphState(TypedDict):
     messages: Annotated[list, add_messages]
     generation: str
     web_search: str
-    documents: List[str]
+    documents: List[Tuple[Document, float]]
     question: str
 
 class GradeDocuments(BaseModel):
@@ -34,17 +31,13 @@ class RAGWorkflowGraph:
     def __init__(self, DB_URI: str):
         # Initialize components
         self.DB_URI = DB_URI
-        self.retriever = self._setup_retriever()
+        self.retriever = Retriever(retriever="chroma").get_retriever()
         self.web_search_tool = TavilySearchResults(k=3)
         self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
         self.rag_chain = self._setup_rag_chain()
         self.question_rewriter = self._setup_question_rewriter()
         self.retrieval_grader = self._setup_retrieval_grader()
 
-    def _setup_retriever(self):
-        chroma = Chroma(CohereEmbeddings())
-        vectorstore = chroma.load_db(os.getenv("CHROMA_DB_LOCATION"))
-        return vectorstore.as_retriever()
 
     def _setup_rag_chain(self):
         prompt = hub.pull("rlm/rag-prompt")
@@ -101,8 +94,8 @@ class RAGWorkflowGraph:
             state (dict): Updates documents key with relevant documents
         '''
         question = state['question']
-        documents = await self.retriever.ainvoke(question)
-        return {"documents": documents}
+        documents_with_scores = await self.retriever.ainvoke(question)
+        return {"documents": documents_with_scores}
     
     async def grade_documents(self, state):
         '''
@@ -116,13 +109,13 @@ class RAGWorkflowGraph:
         '''
 
         question = state['question']
-        documents = state['documents']
+        documents_with_scores = state['documents']
 
         filtered_docs = []
         web_search = "No"
 
-        for doc in documents:
-            score  = await self.retrieval_grader.ainvoke({"document": doc, "question": question})
+        for doc, score in documents_with_scores:
+            score  = await self.retrieval_grader.ainvoke({"document": doc.page_content, "question": question})
             grade = score.binary_score
 
             if grade == "yes":
