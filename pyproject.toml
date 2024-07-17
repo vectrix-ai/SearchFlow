@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "paginx"
-version = "0.0.18"
+version = "0.0.19"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -44,6 +44,7 @@ torch = "^2.3.0"
 pandas = "^2.2.2"
 bump2version = "^1.0.1"
 langchainhub = "^0.1.20"
+streamlit = "^1.36.0"
 
 [build-system]
 requires = ["poetry-core"]

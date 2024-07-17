@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Literal, Optional
+from langsmith import Client
 from langchain_core.messages import HumanMessage
 from paginx.graphs.vectrix import RAGWorkflowGraph
 from paginx.db.postgresql import PostgresSaver
@@ -19,6 +20,7 @@ load_dotenv(dotenv_path=env_path)
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 app = FastAPI()
+client = Client()
 
 class Message(BaseModel):
     role: Literal["user", "assistant", "system"]
@@ -96,6 +98,7 @@ async def stream_response(model: str, messages: List[Message], thread_id: Option
         raise HTTPException(status_code=400, detail="No user message found")
 
     full_response = ""
+    run_id  = ""
 
     if model == 'vectrix':
         vectrix_model = RAGWorkflowGraph(DB_URI=DB_URI)
@@ -113,16 +116,29 @@ async def stream_response(model: str, messages: List[Message], thread_id: Option
             {"question": user_message, "messages": langchain_messages}, 
             version="v1", 
             config = {"configurable": {"thread_id": thread_id}}):
+            
+            # Get the Langsmith run ID
+            run_id = event['run_id']
 
             kind = event["event"]
             if kind == "on_chat_model_stream":
                 if event['metadata']['langgraph_node'] == "generate_response":
+                    langgraph_trigger = event['metadata']['langgraph_triggers'][0].split(':')[-1]
                     content = event["data"]["chunk"].content
                     if content:
                         full_response += content
-                        yield f"data: {json.dumps({'choices': [{'delta': {'content': content}, 'index': 0, 'finish_reason': None}]})}\n\n"
-
-        yield f"data: {json.dumps({'choices': [{'delta': {}, 'index': 0, 'finish_reason': 'stop'}]})}\n\n"
+                        yield f"data: {json.dumps({'choices': [{'delta': {'content': content}, 'index': 0, 'finish_reason': None}],
+                                                   "langgraph_trigger": langgraph_trigger,
+                                                   "run_id": run_id})}\n\n"
+                        
+                else:
+                    langgraph_trigger = event['metadata']['langgraph_triggers'][0].split(':')[-1]
+                    yield f"data: {json.dumps({"langgraph_trigger": langgraph_trigger,
+                                               "run_id": run_id})}\n\n"
+        run = client.read_run(run_id)
+        yield f"data: {json.dumps({'choices': [{'delta': {}, 'index': 0, 'finish_reason': 'stop'}],
+                                   "run_id": run_id,
+                                   "langsmith_trace_url": client.read_run(run_id).url})}\n\n"
         yield "data: [DONE]\n\n"
 
 @app.post("/v1/chat/completions")

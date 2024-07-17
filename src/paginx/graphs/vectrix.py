@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 from langchain_openai import ChatOpenAI
@@ -8,7 +8,6 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain import hub
 from langgraph.graph.message import add_messages
-from typing import Annotated
 from langchain.schema import Document
 from paginx.db.postgresql import BaseCheckpointSaver
 from paginx.db.retrievers import Retriever
@@ -47,12 +46,11 @@ class RAGWorkflowGraph:
     def _setup_question_rewriter(self):
         re_write_prompt = hub.pull("joeywhelan/rephrase")
         return re_write_prompt | self.llm | StrOutputParser()
-    
+
     def _setup_retrieval_grader(self):
         system = """You are a grader assessing relevance of a retrieved document to a user question. \n 
             If the document contains keyword(s) or semantic meaning related to the question, grade it as relevant. \n
             Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."""
-        
         grade_prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", system),
@@ -62,7 +60,7 @@ class RAGWorkflowGraph:
 
         structured_llm_grader = self.llm.with_structured_output(GradeDocuments)
         return grade_prompt | structured_llm_grader
-    
+
     async def transform_query(self, state):
         '''
         Transform the query to procude a better question
@@ -96,7 +94,7 @@ class RAGWorkflowGraph:
         question = state['question']
         documents_with_scores = await self.retriever.ainvoke(question)
         return {"documents": documents_with_scores}
-    
+
     async def grade_documents(self, state):
         '''
         Grade the relevance of the retrieved documents to the question
@@ -125,7 +123,6 @@ class RAGWorkflowGraph:
             web_search = "Yes"
 
         return {"documents": filtered_docs, "web_search": web_search}
-    
 
     async def decide_to_search_web(self, state):
         '''
@@ -143,7 +140,6 @@ class RAGWorkflowGraph:
             return "web_search"
         else:
             return "generate"
-        
 
     async def search_web(self, state):
         '''
@@ -165,7 +161,6 @@ class RAGWorkflowGraph:
         documents.append(web_results)
 
         return {"documents": documents}
-    
 
     async def generate_response(self, state):
         '''
@@ -186,6 +181,15 @@ class RAGWorkflowGraph:
     
 
     def create_graph(self, checkpointer: BaseCheckpointSaver):
+        """
+        Creates a state graph for the workflow.
+
+        Args:
+            checkpointer (BaseCheckpointSaver): The checkpointer object used for saving checkpoints.
+
+        Returns:
+            StateGraph: The compiled state graph.
+        """
         workflow = StateGraph(GraphState)
         workflow.add_node("retrieve", self.retrieve)  # retrieve
         workflow.add_node("grade_documents", self.grade_documents)  # grade documents
