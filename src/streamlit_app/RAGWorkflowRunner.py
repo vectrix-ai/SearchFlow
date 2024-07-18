@@ -15,7 +15,7 @@ class RAGWorkflowRunner:
         self.references = []
 
     async def run(self, prompt: str, status_callback: callable):
-        self.references = []  # Reset references at the start of each run
+         # Reset references at the start of each run
         
         async with AsyncConnectionPool(conninfo=self.db_uri) as pool:
             try:
@@ -27,6 +27,7 @@ class RAGWorkflowRunner:
                 graph = demo_graph.create_graph(checkpointer=checkpointer)
 
                 input_message = HumanMessage(content=prompt)
+                self.references = [] 
 
                 async for event in graph.astream_events({"question": input_message}, version="v1", config=config):
                     self.run_id = event['run_id']
@@ -41,15 +42,13 @@ class RAGWorkflowRunner:
                         if self.retrieval_state != new_state:
                             self.retrieval_state = new_state
                             status_callback(f"Running {new_state}...")
+                    elif kind == "on_chain_end" and event["name"] == "generate_response":
+                        if "documents" in event["data"]["input"]:
+                            sources = [doc.dict() for doc in event["data"]["input"]["documents"]]
+                            self.references.extend([source for source in sources])
 
             except Exception as e:
                 raise RuntimeError(f"An error occurred: {str(e)}")
-            finally:
-                # Add dummy references (replace with actual references in production)
-                self.references.extend([
-                    "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-                    "Sed ut perspiciatis unde omnis iste natus error sit voluptatem."
-                ])
 
     def get_langsmith_run_url(self):
         run = self.client.read_run(self.run_id)

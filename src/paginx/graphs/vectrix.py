@@ -2,6 +2,7 @@ from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -31,7 +32,7 @@ class RAGWorkflowGraph:
         # Initialize components
         self.DB_URI = DB_URI
         self.retriever = Retriever(retriever_type="weaviate").get_retriever()
-        self.web_search_tool = TavilySearchResults(k=3)
+        self.web_search_tool = TavilySearchResults(max_results=3)
         self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
         self.rag_chain = self._setup_rag_chain()
         self.question_rewriter = self._setup_question_rewriter()
@@ -40,7 +41,7 @@ class RAGWorkflowGraph:
 
     def _setup_rag_chain(self):
         prompt = hub.pull("rlm/rag-prompt")
-        llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+        llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
         return prompt | llm | StrOutputParser()
 
     def _setup_question_rewriter(self):
@@ -155,9 +156,9 @@ class RAGWorkflowGraph:
         question = state['question']
         documents = state['documents']
 
-        docs = await self.web_search_tool.ainvoke({"query": question})
+        docs = await self.web_search_tool.ainvoke({"query": question}, k=3)
         for doc in docs:
-            document  = Document(page_content=doc["content"], metadata={"source": "search", "url": doc["url"]})
+            document  = Document(page_content=doc["content"], metadata={"type": "search", "url": doc["url"]})
             documents.append((document))
         #web_results = "\n".join([d["content"] for d in docs])
         #web_results = Document(page_content=web_results, metadata={"source": "search"})

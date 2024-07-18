@@ -23,6 +23,8 @@ if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "rag_runner" not in st.session_state:
     st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id)
+if "references" not in st.session_state:
+    st.session_state.references = []
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -44,6 +46,7 @@ if prompt:
     # Initialize the assistant's message placeholder
     assistant_placeholder = st.empty()
 
+
     # Process the response
     with status_element.status("Processing...", expanded=True) as status:
         def update_status(message):
@@ -57,6 +60,8 @@ if prompt:
                     st.markdown(full_response + "▌")
             with assistant_placeholder.chat_message("assistant"):
                 st.markdown(full_response)
+
+            st.session_state.references = st.session_state.rag_runner.get_references()
             return full_response
 
         # Run the async function
@@ -72,5 +77,7 @@ if prompt:
 
     # Display references
     with st.expander('References 📖'):
-        for reference in st.session_state.rag_runner.get_references():
-            st.caption(reference)
+        for i, reference in enumerate(st.session_state.references):
+            st.markdown(f"**{i+1}. {reference['metadata']['type'].capitalize()} result**")
+            st.caption(f"{reference['page_content'][:120].replace('\n', ' ')} ...")
+            st.caption(f"Link:  {reference['metadata']['url']}")
