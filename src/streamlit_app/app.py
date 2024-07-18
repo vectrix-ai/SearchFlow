@@ -13,8 +13,7 @@ DB_URI = os.getenv("DB_URI")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 # Streamlit page configuration
-st.set_page_config(page_title="Vectrix RAG Chat with search", page_icon="💬")
-st.title("Vectrix Chat 💬")
+st.set_page_config(page_title="Vectrix RAG Chat with search", page_icon="💬", layout="wide")
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -26,58 +25,72 @@ if "rag_runner" not in st.session_state:
 if "references" not in st.session_state:
     st.session_state.references = []
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Create two columns: one for chat, one for references
+chat_col, ref_col = st.columns([2, 1])
 
-# Chat input
-prompt = st.chat_input("What would you like to know?")
+with chat_col:
+    st.title("Vectrix 💬")
 
-if prompt:
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    # Create a container for chat messages
+    chat_container = st.container()
 
-    # Create a status element above the assistant's message
-    status_element = st.empty()
+    # Create a container for the input box
+    input_container = st.container()
 
-    # Initialize the assistant's message placeholder
-    assistant_placeholder = st.empty()
+    # Display chat messages in the chat container
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
+    # Chat input at the bottom
+    with input_container:
+        prompt = st.chat_input("What would you like to know?")
 
-    # Process the response
-    with status_element.status("Processing...", expanded=True) as status:
-        def update_status(message):
-            st.write(message)
+    if prompt:
+        # Add user message to chat history and display it
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with chat_container.chat_message("user"):
+            st.markdown(prompt)
 
-        async def process_response():
-            full_response = ""
-            async for token in st.session_state.rag_runner.run(prompt, update_status):
-                full_response += token
-                with assistant_placeholder.chat_message("assistant"):
-                    st.markdown(full_response + "▌")
-            with assistant_placeholder.chat_message("assistant"):
-                st.markdown(full_response)
+        # Create a placeholder for the assistant's message
+        with chat_container.chat_message("assistant"):
+            message_placeholder = st.empty()
 
-            st.session_state.references = st.session_state.rag_runner.get_references()
-            return full_response
+            # Create a status element
+            status_element = st.empty()
 
-        # Run the async function
-        full_response = asyncio.run(process_response())
-        
-        # Update the status: add the Langsmith Run URL and update to "Process complete"
-        langsmith_url = st.session_state.rag_runner.get_langsmith_run_url()
-        st.caption(f"[Langsmith trace]({langsmith_url})")
-        status.update(label="Process complete!", state="complete", expanded=False)
+            # Process the response
+            with status_element.status("Processing...", expanded=True) as status:
+                def update_status(message):
+                    st.write(message)
 
-    # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                async def process_response():
+                    full_response = ""
+                    async for token in st.session_state.rag_runner.run(prompt, update_status):
+                        full_response += token
+                        message_placeholder.markdown(full_response + "▌")
+                    message_placeholder.markdown(full_response)
+                    st.session_state.references = st.session_state.rag_runner.get_references()
+                    return full_response
 
-    # Display references
-    with st.expander('References 📖'):
+                # Run the async function
+                full_response = asyncio.run(process_response())
+                
+                # Update the status: add the Langsmith Run URL and update to "Process complete"
+                langsmith_url = st.session_state.rag_runner.get_langsmith_run_url()
+                st.caption(f"[Langsmith trace]({langsmith_url})")
+                status.update(label="Process complete!", state="complete", expanded=False)
+
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+with ref_col:
+    st.subheader("References 📖")
+    if st.session_state.references:
         for i, reference in enumerate(st.session_state.references):
-            st.markdown(f"**{i+1}. {reference['metadata']['type'].capitalize()} result**")
-            st.caption(f"{reference['page_content'][:120].replace('\n', ' ')} ...")
-            st.caption(f"Link:  {reference['metadata']['url']}")
+            with st.expander(f"{i+1}. {reference['metadata']['type'].capitalize()} result", expanded=True):
+                st.markdown(f"{reference['page_content'][:120].replace('\n', ' ')} ...")
+                st.caption(f"Link: {reference['metadata']['url']}")
+    else:
+        st.write("No references available yet.")
