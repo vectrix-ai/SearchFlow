@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union, AsyncGenerator
 from langsmith import Client
 from langchain_core.messages import HumanMessage
 from paginx.graphs.vectrix import RAGWorkflowGraph
@@ -59,7 +59,7 @@ async def shutdown_event():
     await pool.close()
     print("Connection pool closed")
 
-def transform_messages(messages: List[Message]):
+async def transform_messages(messages: List[Message]) -> List[Union[HumanMessage, SystemMessage, AIMessage]]:
     transformed = []
     for msg in messages:
         if msg.role == "user":
@@ -70,83 +70,99 @@ def transform_messages(messages: List[Message]):
             transformed.append(AIMessage(content=msg.content))
     return transformed
 
+async def get_user_message(messages: List[Message]) -> Optional[str]:
+    return next((msg.content for msg in reversed(messages) if msg.role == "user"), None)
 
+async def create_vectrix_graph(db_uri: str, pool) -> RAGWorkflowGraph:
+    vectrix_model = RAGWorkflowGraph(DB_URI=db_uri)
+    return vectrix_model.create_graph(checkpointer=PostgresSaver(async_connection=pool))
 
-async def stream_response(model: str, messages: List[Message], thread_id: Optional[str] = None):
-    '''
-    This function handles the streaming response for chat completions.
+async def process_vectrix_event(event: dict, full_response: str) -> tuple:
+    run_id = event['run_id']
+    kind = event["event"]
+    output = None
 
-    Parameters:
-    - model (str): The name of the model to use for chat completions.
-    - messages (List[Message]): The list of messages in the conversation.
-    - thread_id (Optional[str]): The ID of the conversation thread. If not provided, a new thread will be generated.
+    if kind == "on_chat_model_stream":
+        langgraph_trigger = event['metadata']['langgraph_triggers'][0].split(':')[-1]
+        if event['metadata']['langgraph_node'] == "generate_response":
+            content = event["data"]["chunk"].content
+            if content:
+                full_response += content
+                output = json.dumps({
+                    'choices': [{'delta': {'content': content}, 'index': 0, 'finish_reason': None}],
+                    'langgraph_trigger': langgraph_trigger,
+                    'run_id': run_id
+                })
+        else:
+            output = json.dumps({
+                'langgraph_trigger': langgraph_trigger,
+                'run_id': run_id
+            })
+    elif kind == "on_chain_end" and event["name"] == "generate_response":
+        if "documents" in event["data"]["input"]:
+            sources = [doc.dict() for doc in event["data"]["input"]["documents"]]
+            output = json.dumps({'sources': sources})
 
-    Returns:
-    - StreamingResponse: The streaming response containing the chat completions.
+    return full_response, run_id, output
 
-    Raises:
-    - HTTPException: If the stream parameter is set to False.
+async def stream_vectrix_response(graph, input_messages: dict, thread_id: str) -> AsyncGenerator[str, None]:
+    full_response = ""
+    run_id = ""
 
-    If you don't have a thread ID, we will generate one. But you have to pass the list of messages to keep track of the conversation.
-    If you pass a thread_id, the graph will use the existing conversation context from the database.
-    '''
-    
-    langchain_messages = transform_messages(messages)
-    user_message = next((msg.content for msg in reversed(messages) if msg.role == "user"), None)
+    async for event in graph.astream_events(
+        input_messages, 
+        version="v1", 
+        config={"configurable": {"thread_id": thread_id}}
+    ):
+        full_response, run_id, output = await process_vectrix_event(event, full_response)
+        if output:
+            yield f"data: {output}\n\n"
+
+    # Final yield
+    from langsmith import Client
+    client = Client()
+    yield f"data: {json.dumps({'choices': [{'delta': {}, 'index': 0, 'finish_reason': 'stop'}], 'run_id': run_id, 'langsmith_trace_url': client.read_run(run_id).url})}\n\n"
+    yield "data: [DONE]\n\n"
+
+async def stream_response(model: str, messages: List[Message], thread_id: Optional[str] = None, db_uri: str = None, pool=None) -> AsyncGenerator[str, None]:
+    langchain_messages = await transform_messages(messages)
+    user_message = await get_user_message(messages)
 
     if not user_message:
         raise HTTPException(status_code=400, detail="No user message found")
 
-    full_response = ""
-    run_id  = ""
-
     if model == 'vectrix':
-        vectrix_model = RAGWorkflowGraph(DB_URI=DB_URI)
-        graph = vectrix_model.create_graph(checkpointer=PostgresSaver(async_connection=pool))
+        graph = await create_vectrix_graph(db_uri, pool)
 
-        if thread_id:
-            input_messages = {"question": user_message}
-
-        else:
+        if not thread_id:
             langchain_messages.pop()
-            input_messages = {"question": user_message, "messages": langchain_messages}
             thread_id = str(uuid.uuid4())
 
-        async for event in graph.astream_events(
-            {"question": user_message, "messages": langchain_messages}, 
-            version="v1", 
-            config = {"configurable": {"thread_id": thread_id}}):
-            
-            # Get the Langsmith run ID
-            run_id = event['run_id']
+        input_messages = {
+            "question": user_message,
+            "messages": langchain_messages
+        }
 
-            kind = event["event"]
-            if kind == "on_chat_model_stream":
-                if event['metadata']['langgraph_node'] == "generate_response":
-                    langgraph_trigger = event['metadata']['langgraph_triggers'][0].split(':')[-1]
-                    content = event["data"]["chunk"].content
-                    if content:
-                        full_response += content
-                        yield f"data: {json.dumps({'choices': [{'delta': {'content': content}, 'index': 0, 'finish_reason': None}],
-                                                   "langgraph_trigger": langgraph_trigger,
-                                                   "run_id": run_id})}\n\n"
-                        
-                else:
-                    langgraph_trigger = event['metadata']['langgraph_triggers'][0].split(':')[-1]
-                    yield f"data: {json.dumps({"langgraph_trigger": langgraph_trigger,
-                                               "run_id": run_id})}\n\n"
-        run = client.read_run(run_id)
-        yield f"data: {json.dumps({'choices': [{'delta': {}, 'index': 0, 'finish_reason': 'stop'}],
-                                   "run_id": run_id,
-                                   "langsmith_trace_url": client.read_run(run_id).url})}\n\n"
-        yield "data: [DONE]\n\n"
+        async for output in stream_vectrix_response(graph, input_messages, thread_id):
+            yield output
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported model: {model}")
 
+# Usage in FastAPI route
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request, chat_request: ChatCompletionRequest):
     if not chat_request.stream:
         raise HTTPException(status_code=400, detail="Only streaming responses are supported")
 
-    return StreamingResponse(stream_response(chat_request.model, chat_request.messages), media_type="text/event-stream")
+    return StreamingResponse(
+        stream_response(
+            chat_request.model,
+            chat_request.messages,
+            db_uri=DB_URI,
+            pool=pool
+        ),
+        media_type="text/event-stream"
+    )
 
 if __name__ == "__main__":
     import uvicorn

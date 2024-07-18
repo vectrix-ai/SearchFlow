@@ -156,9 +156,12 @@ class RAGWorkflowGraph:
         documents = state['documents']
 
         docs = await self.web_search_tool.ainvoke({"query": question})
-        web_results = "\n".join([d["content"] for d in docs])
-        web_results = Document(page_content=web_results)
-        documents.append(web_results)
+        for doc in docs:
+            document  = Document(page_content=doc["content"], metadata={"source": "search", "url": doc["url"]})
+            documents.append((document))
+        #web_results = "\n".join([d["content"] for d in docs])
+        #web_results = Document(page_content=web_results, metadata={"source": "search"})
+        #documents.append(web_results)
 
         return {"documents": documents}
 

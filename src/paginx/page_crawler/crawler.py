@@ -143,8 +143,11 @@ class Crawler:
 
             self.logger.info("Download finished. Extracting content from the pages.")
             # Apply the excract method to each element of the list
-            docs_transformed = [extract(doc.page_content, output_format="json", include_comments=False) for doc in processed_pages]
+            
+            docs_transformed = [{"metadata": doc.metadata,
+                                 "content": extract(doc.page_content, output_format="json", include_comments=False)} for doc in processed_pages]
             
             # Convert each doc to the PageData object
-            docs_transformed = [PageData(**json.loads(doc)) for doc in docs_transformed]
+            docs_transformed = [PageData(metadata=doc["metadata"], content=json.loads(doc["content"])) for doc in docs_transformed]
+
             return docs_transformed

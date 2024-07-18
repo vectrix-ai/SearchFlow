@@ -108,13 +108,14 @@ class Retriever:
             results = vectrix.query.hybrid(
                 query=query,
                 limit=3,
-                alpha=0.5,
-                return_metadata=MetadataQuery(explain_score=True)
+                alpha=0.8,
+                return_metadata=MetadataQuery(explain_score=True),
+                query_properties=['content']
             )
             return [
                 (Document(
                     page_content=result.properties['content'],
-                    metadata={"title": result.properties['title']}
+                    metadata={"title": result.properties['title'], "url": result.properties['url'], "type": result.properties['type']}
                 ), result.metadata.explain_score)
                 for result in results.objects
             ]

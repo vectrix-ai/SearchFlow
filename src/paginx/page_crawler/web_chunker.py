@@ -47,8 +47,9 @@ class Webchunker:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             )
-            metadatas = self.__extract_metadata()
-            content = [' '.join(page.raw_text.split()) for page in self.pages]
+            #metadatas = self.__extract_metadata()
+            metadatas = [page.metadata for page in self.pages]
+            content = [' '.join(page.content['raw_text'].split()) for page in self.pages]
 
             chunks = text_splitter.create_documents(content, metadatas=metadatas)
 
