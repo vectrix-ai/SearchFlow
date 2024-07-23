@@ -1,8 +1,8 @@
 from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
+from langchain_community.chat_models import ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -26,6 +26,9 @@ class GradeDocuments(BaseModel):
     binary_score: str = Field(
         description="Documents are relevant to the question, 'yes' or 'no'"
     )
+    
+    def dict(self, *args, **kwargs):
+        return {"binary_score": self.binary_score}
 
 class RAGWorkflowGraph:
     def __init__(self, DB_URI: str):
@@ -34,6 +37,7 @@ class RAGWorkflowGraph:
         self.retriever = Retriever(retriever_type="weaviate").get_retriever()
         self.web_search_tool = TavilySearchResults(max_results=3)
         self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
+        self.generation_llm = ChatOllama(model="gemma2:latest", temperature=0)
         self.rag_chain = self._setup_rag_chain()
         self.question_rewriter = self._setup_question_rewriter()
         self.retrieval_grader = self._setup_retrieval_grader()
@@ -41,12 +45,12 @@ class RAGWorkflowGraph:
 
     def _setup_rag_chain(self):
         prompt = hub.pull("rlm/rag-prompt")
-        llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
-        return prompt | llm | StrOutputParser()
+        #llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
+        return prompt | self.generation_llm| StrOutputParser()
 
     def _setup_question_rewriter(self):
         re_write_prompt = hub.pull("joeywhelan/rephrase")
-        return re_write_prompt | self.llm | StrOutputParser()
+        return re_write_prompt | self.generation_llm | StrOutputParser()
 
     def _setup_retrieval_grader(self):
         system = """You are a grader assessing relevance of a retrieved document to a user question. \n 
@@ -114,8 +118,8 @@ class RAGWorkflowGraph:
         web_search = "No"
 
         for doc, score in documents_with_scores:
-            score  = await self.retrieval_grader.ainvoke({"document": doc.page_content, "question": question})
-            grade = score.binary_score
+            result  = await self.retrieval_grader.ainvoke({"document": doc.page_content, "question": question})
+            grade = result.binary_score
 
             if grade == "yes":
                 filtered_docs.append(doc)
