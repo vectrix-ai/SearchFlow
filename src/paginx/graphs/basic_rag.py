@@ -1,7 +1,7 @@
 from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -10,6 +10,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain import hub
 from langgraph.graph.message import add_messages
 from langchain.schema import Document
+from langchain.output_parsers.openai_tools import PydanticToolsParser
 from paginx.db.postgresql import BaseCheckpointSaver
 from paginx.db.retrievers import Retriever
 
@@ -26,9 +27,6 @@ class GradeDocuments(BaseModel):
     binary_score: str = Field(
         description="Documents are relevant to the question, 'yes' or 'no'"
     )
-    
-    def dict(self, *args, **kwargs):
-        return {"binary_score": self.binary_score}
 
 class RAGWorkflowGraph:
     def __init__(self, DB_URI: str):
@@ -36,7 +34,7 @@ class RAGWorkflowGraph:
         self.DB_URI = DB_URI
         self.retriever = Retriever(retriever_type="weaviate").get_retriever()
         self.web_search_tool = TavilySearchResults(max_results=3)
-        self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
+        self.function_llm = ChatOllama(model="llama3-groq-tool-use:8b-q8_0", temperature=0)
         self.generation_llm = ChatOllama(model="gemma2:latest", temperature=0)
         self.rag_chain = self._setup_rag_chain()
         self.question_rewriter = self._setup_question_rewriter()
@@ -63,9 +61,12 @@ class RAGWorkflowGraph:
             ]
         )
 
-        structured_llm_grader = self.llm.with_structured_output(GradeDocuments)
-        return grade_prompt | structured_llm_grader
+        llm_with_tools = self.function_llm.bind_tools([GradeDocuments])
+        parser = PydanticToolsParser(tools=[GradeDocuments])
 
+        grade_chain = grade_prompt | llm_with_tools | parser
+        return grade_chain
+    
     async def transform_query(self, state):
         '''
         Transform the query to procude a better question
@@ -119,7 +120,7 @@ class RAGWorkflowGraph:
 
         for doc, score in documents_with_scores:
             result  = await self.retrieval_grader.ainvoke({"document": doc.page_content, "question": question})
-            grade = result.binary_score
+            grade = result[0].binary_score
 
             if grade == "yes":
                 filtered_docs.append(doc)
