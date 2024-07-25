@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "paginx"
-version = "0.0.27"
+name = "vectrix"
+version = "0.0.28"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "paginx", from = "src"},
+    { include = "vectrix", from = "src"},
 ]
 
 [tool.poetry.dependencies]
@@ -34,14 +34,12 @@ psycopg-binary = "^3.2.1"
 langchain-weaviate = "^0.0.2"
 poppler-utils = "^0.1.0"
 langchain-ollama = "^0.1.0"
+o365 = "^2.0.36"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
 ipywidgets = "^8.1.2"
 python-dotenv = "^1.0.1"
-mlx = "^0.12.2"
-mlx-lm = "^0.12.1"
-transformers = "^4.40.1"
 torch = "^2.3.0"
 pandas = "^2.2.2"
 bump2version = "^1.0.1"

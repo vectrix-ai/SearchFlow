@@ -4,8 +4,8 @@ from pydantic import BaseModel
 from typing import List, Literal, Optional, Union, AsyncGenerator
 from langsmith import Client
 from langchain_core.messages import HumanMessage
-from paginx.graphs.basic_rag import RAGWorkflowGraph
-from paginx.db.postgresql import PostgresSaver
+from vectrix.graphs.basic_rag import RAGWorkflowGraph
+from vectrix.db.postgresql import PostgresSaver
 import json, os
 from dotenv import load_dotenv
 from pathlib import Path

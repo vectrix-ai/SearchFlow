@@ -6,7 +6,7 @@ from trafilatura import extract
 import logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-from paginx.page_crawler.models.site_pages import PageData
+from vectrix.page_crawler.models.site_pages import PageData
 
 class Crawler:
     """

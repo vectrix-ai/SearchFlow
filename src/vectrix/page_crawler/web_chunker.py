@@ -1,5 +1,5 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from paginx.page_crawler.models.site_pages import PageData
+from vectrix.page_crawler.models.site_pages import PageData
 from typing import List
 import logging
 

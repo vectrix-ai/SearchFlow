@@ -2,7 +2,6 @@ from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -11,8 +10,8 @@ from langchain import hub
 from langgraph.graph.message import add_messages
 from langchain.schema import Document
 from langchain.output_parsers.openai_tools import PydanticToolsParser
-from paginx.db.postgresql import BaseCheckpointSaver
-from paginx.db.retrievers import Retriever
+from vectrix.db.postgresql import BaseCheckpointSaver
+from vectrix.db.weaviate import Weaviate
 
 
 
@@ -32,17 +31,19 @@ class RAGWorkflowGraph:
     def __init__(self, DB_URI: str):
         # Initialize components
         self.DB_URI = DB_URI
-        self.retriever = Retriever(retriever_type="weaviate").get_retriever()
+        weaviate = Weaviate()
+        weaviate.set_colleciton('Vectrix')
+        self.retriever = weaviate.get_retriever()
         self.web_search_tool = TavilySearchResults(max_results=3)
         self.function_llm = ChatOllama(model="llama3-groq-tool-use:8b-q8_0", temperature=0)
-        self.generation_llm = ChatOllama(model="gemma2:latest", temperature=0)
+        self.generation_llm = ChatOllama(model="llama3.1", temperature=0)
         self.rag_chain = self._setup_rag_chain()
         self.question_rewriter = self._setup_question_rewriter()
         self.retrieval_grader = self._setup_retrieval_grader()
 
 
     def _setup_rag_chain(self):
-        prompt = hub.pull("rlm/rag-prompt")
+        prompt = hub.pull("final_rag_response")
         #llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
         return prompt | self.generation_llm| StrOutputParser()
 

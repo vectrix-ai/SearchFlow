@@ -1,6 +1,6 @@
-from paginx.page_crawler.crawler import Crawler
-from paginx.page_crawler.web_chunker import Webchunker
-from paginx.ner.extract import Extract
+from vectrix.page_crawler.crawler import Crawler
+from vectrix.page_crawler.web_chunker import Webchunker
+from vectrix.ner.extract import Extract
 
 crawler = Crawler("https://vectrix.ai")
 site_pages = crawler.extract()
