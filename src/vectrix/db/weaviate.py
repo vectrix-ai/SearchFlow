@@ -5,17 +5,8 @@ from langchain_core.runnables import chain
 import weaviate
 from weaviate.classes.config import Configure
 from weaviate.classes.query import MetadataQuery
+from vectrix.models.documents import VectorDocument
 
-class VectorDocument(BaseModel):
-    """
-    Data model for storing chunks of text and their metadata.
-    Can be ingested by the Vectordb class.
-    """
-    title: str
-    url: str
-    content: str
-    type: str
-    NER: Optional[str] = None
 class Weaviate:
     """
     Manages the Weaviate client and provides methods for interacting with the vector database.

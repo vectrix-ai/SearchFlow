@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vectrix"
-version = "0.0.28"
+version = "0.0.29"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"

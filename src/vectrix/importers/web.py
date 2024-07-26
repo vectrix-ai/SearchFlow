@@ -1,12 +1,16 @@
-from urllib.parse import urlparse
-from langchain_community.document_loaders import AsyncHtmlLoader
-from bs4 import BeautifulSoup
-import validators, json
-from trafilatura import extract
 import logging
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+from urllib.parse import urlparse
+import json
+from typing import List
+import validators
+from langchain_community.document_loaders import AsyncHtmlLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from bs4 import BeautifulSoup
+from trafilatura import extract
+from vectrix.models.documents import WebPageData
 
-from vectrix.page_crawler.models.site_pages import PageData
+logging.basicConfig(level=logging.ERROR, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 class Crawler:
     """
@@ -46,6 +50,9 @@ class Crawler:
 
     @staticmethod
     def is_valid_url(url_string: str) -> bool:
+        """
+        Returns True if the URL is valid, False otherwise.
+        """
         result = validators.url(url_string)
         # Url with the words Slide-template are not valid
         if "slide-template" in url_string.lower():
@@ -57,6 +64,9 @@ class Crawler:
 
     @staticmethod   
     def prepend_url(base_url, link):
+        """
+        Prepends a base URL to a link if it starts with '/'.
+        """
         if link.startswith('/'):
             return base_url + link
         else:
@@ -64,6 +74,9 @@ class Crawler:
 
     @staticmethod
     def strip_query_string(url):
+        """
+        Remove query string from url
+        """
         parsed = urlparse(url)
         return parsed.scheme + "://" + parsed.netloc + parsed.path
         
@@ -147,7 +160,60 @@ class Crawler:
             docs_transformed = [{"metadata": doc.metadata,
                                  "content": extract(doc.page_content, output_format="json", include_comments=False)} for doc in processed_pages]
             
-            # Convert each doc to the PageData object
-            docs_transformed = [PageData(metadata=doc["metadata"], content=json.loads(doc["content"])) for doc in docs_transformed]
+            # Convert each doc to the WebPageData object
+            docs_transformed = [WebPageData(metadata=doc["metadata"], content=json.loads(doc["content"])) for doc in docs_transformed]
 
             return docs_transformed
+    
+class Webchunker:
+    """
+    A class for processing and chunking web page content.
+
+    This class takes a list of WebPageData objects, which represent web pages,
+    and provides methods to extract metadata and chunk the content of these pages.
+
+    Attributes:
+        pages (List[WebPageData]): A list of WebPageData objects representing the web pages.
+        logger (logging.Logger): A logger object for logging information and errors.
+
+    Methods:
+        __extract_metadata(): Extracts metadata from the pages.
+        chunk_content(chunk_size: int = 1000, chunk_overlap: int = 0): Chunks the content of the pages.
+    """
+
+    def __init__(self, pages: List[WebPageData]):
+        """
+        Initializes a WebChunker object.
+
+        Args:
+            pages (List[WebPageData]): A list of WebPageData objects representing the pages to be processed.
+        Returns:
+            None
+        """
+        self.pages = pages
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("Webchunker initialized with %s pages", len(self.pages))
+
+    def chunk_content(self, chunk_size: int = 1000, chunk_overlap: int = 0) -> list:
+        """
+        Chunk the content of the pages into smaller chunks.
+
+        Args:
+            chunk_size (int): The maximum size of each chunk in characters. Defaults to 1000.
+
+        Returns:
+            list: A list of chunks containing the content of the pages.
+        """
+        text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        model_name="gpt-4",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        )
+        
+        metadatas = [page.metadata for page in self.pages]
+        content = [' '.join(page.content['text'].split()) for page in self.pages]
+
+        chunks = text_splitter.create_documents(content, metadatas=metadatas)
+
+        self.logger.info("Content chunked into %s chunks", len(chunks))
+        return chunks
