@@ -1,589 +1,178 @@
-"""Implementation of a langgraph checkpoint saver using Postgres."""
-from contextlib import asynccontextmanager, contextmanager
-from typing import (
-    Any,
-    AsyncGenerator,
-    AsyncIterator,
-    Generator,
-    Optional,
-    Union,
-    Tuple,
-    List,
-    Sequence
-)
+from datetime import datetime
+import logging
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.orm import sessionmaker, declarative_base
+import pytz
 
-import psycopg
-from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint import BaseCheckpointSaver
-from langgraph.serde.jsonplus import JsonPlusSerializer
-from langgraph.checkpoint.base import Checkpoint, CheckpointMetadata, CheckpointTuple
-from psycopg_pool import AsyncConnectionPool, ConnectionPool
+Base = declarative_base()
 
-
-class JsonAndBinarySerializer(JsonPlusSerializer):
-    def _default(self, obj):
-        if isinstance(obj, (bytes, bytearray)):
-            return self._encode_constructor_args(
-                obj.__class__, method="fromhex", args=[obj.hex()]
-            )
-        return super()._default(obj)
-
-    def dumps(self, obj: Any) -> tuple[str, bytes]:
-        if isinstance(obj, bytes):
-            return "bytes", obj
-        elif isinstance(obj, bytearray):
-            return "bytearray", obj
-
-        return "json", super().dumps(obj)
-
-    def loads(self, s: tuple[str, bytes]) -> Any:
-        if s[0] == "bytes":
-            return s[1]
-        elif s[0] == "bytearray":
-            return bytearray(s[1])
-        elif s[0] == "json":
-            return super().loads(s[1])
-        else:
-            raise NotImplementedError(f"Unknown serialization type: {s[0]}")
-
-
-@contextmanager
-def _get_sync_connection(
-    connection: Union[psycopg.Connection, ConnectionPool, None],
-) -> Generator[psycopg.Connection, None, None]:
-    """Get the connection to the Postgres database."""
-    if isinstance(connection, psycopg.Connection):
-        yield connection
-    elif isinstance(connection, ConnectionPool):
-        with connection.connection() as conn:
-            yield conn
-    else:
-        raise ValueError(
-            "Invalid sync connection object. Please initialize the check pointer "
-            f"with an appropriate sync connection object. "
-            f"Got {type(connection)}."
-        )
-
-
-@asynccontextmanager
-async def _get_async_connection(
-    connection: Union[psycopg.AsyncConnection, AsyncConnectionPool, None],
-) -> AsyncGenerator[psycopg.AsyncConnection, None]:
-    """Get the connection to the Postgres database."""
-    if isinstance(connection, psycopg.AsyncConnection):
-        yield connection
-    elif isinstance(connection, AsyncConnectionPool):
-        async with connection.connection() as conn:
-            yield conn
-    else:
-        raise ValueError(
-            "Invalid async connection object. Please initialize the check pointer "
-            f"with an appropriate async connection object. "
-            f"Got {type(connection)}."
-        )
-
-
-class PostgresSaver(BaseCheckpointSaver):
-    sync_connection: Optional[Union[psycopg.Connection, ConnectionPool]] = None
-    """The synchronous connection or pool to the Postgres database.
-    
-    If providing a connection object, please ensure that the connection is open
-    and remember to close the connection when done.
+class PromptManager:
     """
-    async_connection: Optional[
-        Union[psycopg.AsyncConnection, AsyncConnectionPool]
-    ] = None
-    """The asynchronous connection or pool to the Postgres database.
-    
-    If providing a connection object, please ensure that the connection is open
-    and remember to close the connection when done.
+    A class for managing prompts in a database.
+
+    This class provides methods to add, update, remove, and retrieve prompts
+    stored in a SQL database using SQLAlchemy ORM.
+
+    Attributes:
+        engine: SQLAlchemy database engine
+        Session: SQLAlchemy session factory
+
+    Methods:
+        add_prompt: Add a new prompt to the database
+        update_prompt: Update an existing prompt in the database
+        remove_prompt: Remove a prompt from the database
+        get_all_prompts: Retrieve all prompts from the database
     """
+    def __init__(self, db_url):
+        self.engine = create_engine(db_url)
+        self.Session = sessionmaker(bind=self.engine)
+        self.logger = logging.getLogger(__name__)
+        
+        # Create the table if it doesn't exist
+        Base.metadata.create_all(self.engine)
 
-    def __init__(
-        self,
-        sync_connection: Optional[Union[psycopg.Connection, ConnectionPool]] = None,
-        async_connection: Optional[
-            Union[psycopg.AsyncConnection, AsyncConnectionPool]
-        ] = None,
-    ):
-        super().__init__(serde=JsonPlusSerializer())
-        self.sync_connection = sync_connection
-        self.async_connection = async_connection
+    class Prompt(Base):
+        __tablename__ = 'prompts'
 
-    @contextmanager
-    def _get_sync_connection(self) -> Generator[psycopg.Connection, None, None]:
-        """Get the connection to the Postgres database."""
-        with _get_sync_connection(self.sync_connection) as connection:
-            yield connection
+        id = Column(Integer, primary_key=True)
+        name = Column(String(255), nullable=False)
+        prompt = Column(Text, nullable=False)
+        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
-    @asynccontextmanager
-    async def _get_async_connection(
-        self,
-    ) -> AsyncGenerator[psycopg.AsyncConnection, None]:
-        """Get the connection to the Postgres database."""
-        async with _get_async_connection(self.async_connection) as connection:
-            yield connection
-
-    CREATE_TABLES_QUERY = """
-    CREATE TABLE IF NOT EXISTS checkpoints (
-        thread_id TEXT NOT NULL,
-        thread_ts TEXT NOT NULL,
-        parent_ts TEXT,
-        checkpoint BYTEA NOT NULL,
-        metadata BYTEA NOT NULL,
-        PRIMARY KEY (thread_id, thread_ts)
-    );
-    CREATE TABLE IF NOT EXISTS writes (
-        thread_id TEXT NOT NULL,
-        thread_ts TEXT NOT NULL,
-        task_id TEXT NOT NULL,
-        idx INTEGER NOT NULL,
-        channel TEXT NOT NULL,
-        value BYTEA,
-        PRIMARY KEY (thread_id, thread_ts, task_id, idx)
-    );
-    """
-
-    @staticmethod
-    def create_tables(connection: Union[psycopg.Connection, ConnectionPool], /) -> None:
-        """Create the schema for the checkpoint saver."""
-        with _get_sync_connection(connection) as conn:
-            with conn.cursor() as cur:
-                cur.execute(PostgresSaver.CREATE_TABLES_QUERY)
-
-    @staticmethod
-    async def acreate_tables(
-        connection: Union[psycopg.AsyncConnection, AsyncConnectionPool], /
-    ) -> None:
-        """Create the schema for the checkpoint saver."""
-        async with _get_async_connection(connection) as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(PostgresSaver.CREATE_TABLES_QUERY)
-
-    @staticmethod
-    def drop_tables(connection: psycopg.Connection, /) -> None:
-        """Drop the table for the checkpoint saver."""
-        with connection.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS checkpoints, writes;")
-
-    @staticmethod
-    async def adrop_tables(connection: psycopg.AsyncConnection, /) -> None:
-        """Drop the table for the checkpoint saver."""
-        async with connection.cursor() as cur:
-            await cur.execute("DROP TABLE IF EXISTS checkpoints, writes;")
-
-    UPSERT_CHECKPOINT_QUERY = """
-    INSERT INTO checkpoints 
-        (thread_id, thread_ts, parent_ts, checkpoint, metadata)
-    VALUES 
-        (%s, %s, %s, %s, %s)
-    ON CONFLICT (thread_id, thread_ts)
-    DO UPDATE SET checkpoint = EXCLUDED.checkpoint,
-                  metadata = EXCLUDED.metadata;
-    """
-
-    def put(
-        self,
-        config: RunnableConfig,
-        checkpoint: Checkpoint,
-        metadata: CheckpointMetadata,
-    ) -> RunnableConfig:
-        """Put the checkpoint for the given configuration.
-        Args:
-            config: The configuration for the checkpoint.
-                A dict with a `configurable` key which is a dict with
-                a `thread_id` key and an optional `thread_ts` key.
-                For example, { 'configurable': { 'thread_id': 'test_thread' } }
-            checkpoint: The checkpoint to persist.
-        Returns:
-            The RunnableConfig that describes the checkpoint that was just created.
-            It'll contain the `thread_id` and `thread_ts` of the checkpoint.
+    def add_prompt(self, name, prompt_text):
         """
-        thread_id = config["configurable"]["thread_id"]
-        parent_ts = config["configurable"].get("thread_ts")
-        with self._get_sync_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    self.UPSERT_CHECKPOINT_QUERY,
-                    (
-                        thread_id,
-                        checkpoint["id"],
-                        parent_ts if parent_ts else None,
-                        self.serde.dumps(checkpoint),
-                        self.serde.dumps(metadata),
-                    ),
-                )
+        Add a new prompt to the database.
 
-        return {
-            "configurable": {
-                "thread_id": thread_id,
-                "thread_ts": checkpoint["id"],
-            },
-        }
-
-    async def aput(
-        self,
-        config: RunnableConfig,
-        checkpoint: Checkpoint,
-        metadata: CheckpointMetadata,
-    ) -> RunnableConfig:
-        """Put the checkpoint for the given configuration.
         Args:
-            config: The configuration for the checkpoint.
-                A dict with a `configurable` key which is a dict with
-                a `thread_id` key and an optional `thread_ts` key.
-                For example, { 'configurable': { 'thread_id': 'test_thread' } }
-            checkpoint: The checkpoint to persist.
+            name (str): The name of the prompt.
+            prompt_text (str): The text content of the prompt.
+
         Returns:
-            The RunnableConfig that describes the checkpoint that was just created.
-            It'll contain the `thread_id` and `thread_ts` of the checkpoint.
+            int: The ID of the newly added prompt if successful, None otherwise.
+
+        Raises:
+            Exception: If there's an error during the database operation.
         """
-        thread_id = config["configurable"]["thread_id"]
-        parent_ts = config["configurable"].get("thread_ts")
-        async with self._get_async_connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    self.UPSERT_CHECKPOINT_QUERY,
-                    (
-                        thread_id,
-                        checkpoint["id"],
-                        parent_ts if parent_ts else None,
-                        self.serde.dumps(checkpoint),
-                        self.serde.dumps(metadata),
-                    ),
-                )
+        session = self.Session()
+        self.logger.info(f"Adding new prompt: {name}")
+        try:
+            new_prompt = self.Prompt(name=name, prompt=prompt_text)
+            session.add(new_prompt)
+            session.commit()
+            print(f"Added new prompt: {name}")
+            return new_prompt.id
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error adding prompt: {e}")
+        finally:
+            session.close()
 
-        return {
-            "configurable": {
-                "thread_id": thread_id,
-                "thread_ts": checkpoint["id"],
-            },
-        }
+    def update_prompt(self, prompt_id, name=None, prompt_text=None):
+        """
+        Update an existing prompt in the database.
 
-    UPSERT_WRITES_QUERY = """
-    INSERT INTO writes
-        (thread_id, thread_ts, task_id, idx, channel, value)
-    VALUES
-        (%s, %s, %s, %s, %s, %s)
-    ON CONFLICT (thread_id, thread_ts, task_id, idx)
-    DO UPDATE SET value = EXCLUDED.value;
-    """
-
-    def put_writes(
-        self,
-        config: RunnableConfig,
-        writes: Sequence[Tuple[str, Any]],
-        task_id: str,
-    ) -> None:
-        with self._get_sync_connection() as conn:
-            with conn.cursor() as cur:
-                cur.executemany(
-                    self.UPSERT_WRITES_QUERY,
-                    [
-                        (
-                            str(config["configurable"]["thread_id"]),
-                            str(config["configurable"]["thread_ts"]),
-                            task_id,
-                            idx,
-                            channel,
-                            self.serde.dumps(value),
-                        )
-                        for idx, (channel, value) in enumerate(writes)
-                    ],
-                )
-            conn.commit()
-
-    async def aput_writes(
-        self,
-        config: RunnableConfig,
-        writes: Sequence[Tuple[str, Any]],
-        task_id: str,
-    ) -> None:
-
-        async with self._get_async_connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.executemany(
-                    self.UPSERT_WRITES_QUERY,
-                    [
-                        (
-                            str(config["configurable"]["thread_id"]),
-                            str(config["configurable"]["thread_ts"]),
-                            task_id,
-                            idx,
-                            channel,
-                            self.serde.dumps(value),
-                        )
-                        for idx, (channel, value) in enumerate(writes)
-                    ],
-                )
-            await conn.commit()
-
-    LIST_CHECKPOINTS_QUERY_STR = """
-    SELECT checkpoint, metadata, thread_ts, parent_ts
-    FROM checkpoints
-    {where}
-    ORDER BY thread_ts DESC
-    """
-
-    def list(
-        self,
-        config: Optional[RunnableConfig],
-        *,
-        filter: Optional[dict[str, Any]] = None,
-        before: Optional[RunnableConfig] = None,
-        limit: Optional[int] = None,
-    ) -> Generator[CheckpointTuple, None, None]:
-        """Get all the checkpoints for the given configuration."""
-        where, args = self._search_where(config, filter, before)
-        query = self.LIST_CHECKPOINTS_QUERY_STR.format(where=where)
-        if limit:
-            query += f" LIMIT {limit}"
-        with self._get_sync_connection() as conn:
-            with conn.cursor() as cur:
-                thread_id = config["configurable"]["thread_id"]
-                cur.execute(query, tuple(args))
-                for value in cur:
-                    checkpoint, metadata, thread_ts, parent_ts = value
-                    yield CheckpointTuple(
-                        config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": thread_ts,
-                            }
-                        },
-                        checkpoint=self.serde.loads(checkpoint),
-                        metadata=self.serde.loads(metadata),
-                        parent_config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": thread_ts,
-                            }
-                        }
-                        if parent_ts
-                        else None,
-                    )
-
-    async def alist(
-        self,
-        config: Optional[RunnableConfig],
-        *,
-        filter: Optional[dict[str, Any]] = None,
-        before: Optional[RunnableConfig] = None,
-        limit: Optional[int] = None,
-    ) -> AsyncIterator[CheckpointTuple]:
-        """Get all the checkpoints for the given configuration."""
-        where, args = self._search_where(config, filter, before)
-        query = self.LIST_CHECKPOINTS_QUERY_STR.format(where=where)
-        if limit:
-            query += f" LIMIT {limit}"
-        async with self._get_async_connection() as conn:
-            async with conn.cursor() as cur:
-                thread_id = config["configurable"]["thread_id"]
-                await cur.execute(query, tuple(args))
-                async for value in cur:
-                    checkpoint, metadata, thread_ts, parent_ts = value
-                    yield CheckpointTuple(
-                        config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": thread_ts,
-                            }
-                        },
-                        checkpoint=self.serde.loads(checkpoint),
-                        metadata=self.serde.loads(metadata),
-                        parent_config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": thread_ts,
-                            }
-                        }
-                        if parent_ts
-                        else None,
-                    )
-
-    GET_CHECKPOINT_BY_TS_QUERY = """
-    SELECT checkpoint, metadata, thread_ts, parent_ts
-    FROM checkpoints
-    WHERE thread_id = %(thread_id)s AND thread_ts = %(thread_ts)s
-    """
-
-    GET_CHECKPOINT_QUERY = """
-    SELECT checkpoint, metadata, thread_ts, parent_ts
-    FROM checkpoints
-    WHERE thread_id = %(thread_id)s
-    ORDER BY thread_ts DESC LIMIT 1
-    """
-
-    def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
-        """Get the checkpoint tuple for the given configuration.
         Args:
-            config: The configuration for the checkpoint.
-                A dict with a `configurable` key which is a dict with
-                a `thread_id` key and an optional `thread_ts` key.
-                For example, { 'configurable': { 'thread_id': 'test_thread' } }
+            prompt_id (int): The ID of the prompt to update.
+            name (str, optional): The new name for the prompt. If None, the name remains unchanged.
+            prompt_text (str, optional): The new text content for the prompt. If None, the text remains unchanged.
+
         Returns:
-            The checkpoint tuple for the given configuration if it exists,
-            otherwise None.
-            If thread_ts is None, the latest checkpoint is returned if it exists.
+            bool: True if the prompt was successfully updated, False otherwise.
+
+        Raises:
+            Exception: If there's an error during the database operation.
         """
-        thread_id = config["configurable"]["thread_id"]
-        thread_ts = config["configurable"].get("thread_ts")
-        with self._get_sync_connection() as conn:
-            with conn.cursor() as cur:
-                # find the latest checkpoint for the thread_id
-                if thread_ts:
-                    cur.execute(
-                        self.GET_CHECKPOINT_BY_TS_QUERY,
-                        {
-                            "thread_id": thread_id,
-                            "thread_ts": thread_ts,
-                        },
-                    )
-                else:
-                    cur.execute(
-                        self.GET_CHECKPOINT_QUERY,
-                        {
-                            "thread_id": thread_id,
-                        },
-                    )
+        session = self.Session()
+        self.logger.info(f"Updating prompt with ID: {prompt_id}")
+        try:
+            prompt = session.query(self.Prompt).filter_by(id=prompt_id).first()
+            if prompt:
+                if name:
+                    prompt.name = name
+                if prompt_text:
+                    prompt.prompt = prompt_text
+                prompt.update_date = datetime.now(pytz.UTC)
+                session.commit()
+                print(f"Updated prompt with ID: {prompt_id}")
+                return True
+            else:
+                print(f"No prompt found with ID: {prompt_id}")
+                return False
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error updating prompt: {e}")
+            return False
+        finally:
+            session.close()
 
-                # if a checkpoint is found, return it
-                if value := cur.fetchone():
-                    checkpoint, metadata, thread_ts, parent_ts = value
-                    if not config["configurable"].get("thread_ts"):
-                        config = {
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": thread_ts,
-                            }
-                        }
 
-                    # find any pending writes
-                    cur.execute(
-                        "SELECT task_id, channel, value FROM writes WHERE thread_id = %(thread_id)s AND thread_ts = %(thread_ts)s",
-                        {
-                            "thread_id": thread_id,
-                            "thread_ts": thread_ts,
-                        },
-                    )
-                    # deserialize the checkpoint and metadata
-                    return CheckpointTuple(
-                        config=config,
-                        checkpoint=self.serde.loads(checkpoint),
-                        metadata=self.serde.loads(metadata),
-                        parent_config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": parent_ts,
-                            }
-                        }
-                        if parent_ts
-                        else None,
-                        pending_writes=[
-                            (task_id, channel, self.serde.loads(value))
-                            for task_id, channel, value in cur
-                        ]
-                    )
 
-    async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
-        """Get the checkpoint tuple for the given configuration.
+    def get_prompt_by_name(self, name):
+        """
+        Get a prompt from the database by its name.
+        """
+        session = self.Session()
+        self.logger.info(f"Retrieving prompt by name: {name}")
+        try:
+            prompt = session.query(self.Prompt).filter_by(name=name).first()
+            if prompt:
+                return prompt.prompt
+            else:
+                self.logger.error(f"No prompt found with name: {name}")
+                return None
+        except Exception as e:
+            self.logger.error(f"Error retrieving prompt by name: {e}")  
+        finally:
+            session.close()
+
+    def remove_prompt(self, prompt_id):
+        """
+        Remove a prompt from the database.
+
         Args:
-            config: The configuration for the checkpoint.
-                A dict with a `configurable` key which is a dict with
-                a `thread_id` key and an optional `thread_ts` key.
-                For example, { 'configurable': { 'thread_id': 'test_thread' } }
+            prompt_id (int): The ID of the prompt to remove.
+
         Returns:
-            The checkpoint tuple for the given configuration if it exists,
-            otherwise None.
-            If thread_ts is None, the latest checkpoint is returned if it exists.
+            bool: True if the prompt was successfully removed, False otherwise.
+
+        Raises:
+            Exception: If there's an error during the database operation.
         """
-        thread_id = config["configurable"]["thread_id"]
-        thread_ts = config["configurable"].get("thread_ts")
-        async with self._get_async_connection() as conn:
-            async with conn.cursor() as cur:
-                # find the latest checkpoint for the thread_id
-                if thread_ts:
-                    await cur.execute(
-                        self.GET_CHECKPOINT_BY_TS_QUERY,
-                        {
-                            "thread_id": thread_id,
-                            "thread_ts": thread_ts,
-                        },
-                    )
-                else:
-                    await cur.execute(
-                        self.GET_CHECKPOINT_QUERY,
-                        {
-                            "thread_id": thread_id,
-                        },
-                    )
-                # if a checkpoint is found, return it
-                if value := await cur.fetchone():
-                    checkpoint, metadata, thread_ts, parent_ts = value
-                    if not config["configurable"].get("thread_ts"):
-                        config = {
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": thread_ts,
-                            }
-                        }
+        session = self.Session()
+        self.logger.info(f"Removing prompt with ID: {prompt_id}")
+        try:
+            prompt = session.query(self.Prompt).filter_by(id=prompt_id).first()
+            if prompt:
+                session.delete(prompt)
+                session.commit()
+                print(f"Removed prompt with ID: {prompt_id}")
+                return True
+            else:
+                print(f"No prompt found with ID: {prompt_id}")
+                return False
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error removing prompt: {e}")
+            return False
+        finally:
+            session.close()
 
-                    # find any pending writes
-                    await cur.execute(
-                        "SELECT task_id, channel, value FROM writes WHERE thread_id = %(thread_id)s AND thread_ts = %(thread_ts)s",
-                        {
-                            "thread_id": thread_id,
-                            "thread_ts": thread_ts,
-                        },
-                    )
-                    # deserialize the checkpoint and metadata
-                    return CheckpointTuple(
-                        config=config,
-                        checkpoint=self.serde.loads(checkpoint),
-                        metadata=self.serde.loads(metadata),
-                        parent_config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "thread_ts": parent_ts,
-                            }
-                        }
-                        if parent_ts
-                        else None,
-                        pending_writes=[
-                            (task_id, channel, self.serde.loads(value))
-                            async for task_id, channel, value in cur
-                        ]
-                    )
+    def get_all_prompts(self):
+        """
+        Retrieve all prompts from the database.
 
-    def _search_where(
-        self,
-        config: Optional[RunnableConfig],
-        filter: Optional[dict[str, Any]] = None,
-        before: Optional[RunnableConfig] = None,
-    ) -> Tuple[str, List[Any]]:
-        """Return WHERE clause predicates for given config, filter, and before parameters.
-        Args:
-            config (Optional[RunnableConfig]): The config to use for filtering.
-            filter (Optional[Dict[str, Any]]): Additional filtering criteria.
-            before (Optional[RunnableConfig]): A config to limit results before a certain timestamp.
         Returns:
-            Tuple[str, Sequence[Any]]: A tuple containing the WHERE clause and parameter values.
+            list: A list of all Prompt objects stored in the database.
+
+        Note:
+            This method creates a new session, queries all prompts, and closes the session
+            after the query is executed, regardless of whether an exception occurs.
         """
-        wheres = []
-        param_values = []
-
-        # Add predicate for config
-        if config is not None:
-            wheres.append("thread_id = %s ")
-            param_values.append(config["configurable"]["thread_id"])
-
-        if filter:
-            raise NotImplementedError()
-
-        # Add predicate for limiting results before a certain timestamp
-        if before is not None:
-            wheres.append("thread_ts < %s")
-            param_values.append(before["configurable"]["thread_ts"])
-
-        where_clause = "WHERE " + " AND ".join(wheres) if wheres else ""
-        return where_clause, param_values
+        session = self.Session()
+        self.logger.info("Retrieving all prompts")
+        try:
+            prompts = session.query(self.Prompt).all()
+            return prompts
+        finally:
+            session.close()

@@ -1,7 +1,7 @@
 import asyncio
 from langchain_core.messages import HumanMessage
 from vectrix.graphs.basic_rag import RAGWorkflowGraph
-from vectrix.db.postgresql import PostgresSaver
+from vectrix.db.checkpointer import PostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
 

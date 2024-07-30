@@ -2,6 +2,7 @@ from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 from langchain_ollama import ChatOllama
+from langchain_anthropic import ChatAnthropic
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -9,9 +10,10 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain import hub
 from langgraph.graph.message import add_messages
 from langchain.schema import Document
-from langchain.output_parsers.openai_tools import PydanticToolsParser
-from vectrix.db.postgresql import BaseCheckpointSaver
+from langchain.output_parsers.openai_tools import PydanticToolsParser, JsonOutputToolsParser
+from vectrix.db.checkpointer import BaseCheckpointSaver
 from vectrix.db.weaviate import Weaviate
+from vectrix.db.postgresql import PromptManager
 
 
 
@@ -27,12 +29,21 @@ class GradeDocuments(BaseModel):
         description="Documents are relevant to the question, 'yes' or 'no'"
     )
 
+class Reference(BaseModel):
+    text: str
+    url: str
+
+class QuestionAnswer(BaseModel):
+    answer: str
+    references: List[Reference]
+
 class RAGWorkflowGraph:
     def __init__(self, DB_URI: str):
         # Initialize components
         self.DB_URI = DB_URI
         weaviate = Weaviate()
         weaviate.set_colleciton('Vectrix')
+        self.database = PromptManager(DB_URI)
         self.retriever = weaviate.get_retriever()
         self.web_search_tool = TavilySearchResults(max_results=3)
         self.function_llm = ChatOllama(model="llama3-groq-tool-use:8b-q8_0", temperature=0)
@@ -41,11 +52,15 @@ class RAGWorkflowGraph:
         self.question_rewriter = self._setup_question_rewriter()
         self.retrieval_grader = self._setup_retrieval_grader()
 
-
     def _setup_rag_chain(self):
-        prompt = hub.pull("final_rag_response")
-        #llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
-        return prompt | self.generation_llm| StrOutputParser()
+        prompt = self.database.get_prompt_by_name("answer_question_based_on_context")
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("user", prompt)
+        ])
+        llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
+        llm = llm.bind_tools(tools=[QuestionAnswer])
+        
+        return prompt_template | llm | JsonOutputToolsParser(tools=[QuestionAnswer])
 
     def _setup_question_rewriter(self):
         re_write_prompt = hub.pull("joeywhelan/rephrase")
@@ -186,11 +201,12 @@ class RAGWorkflowGraph:
         documents = state['documents']
         question = state['question']
 
+
         response = await self.rag_chain.ainvoke({"context": documents, "question": question})
         return {"generation": response}
     
 
-    def create_graph(self, checkpointer: BaseCheckpointSaver):
+    def create_graph(self):
         """
         Creates a state graph for the workflow.
 
@@ -221,7 +237,7 @@ class RAGWorkflowGraph:
         workflow.add_edge("search_web", "generate_response")
         workflow.add_edge("generate_response", END)
 
-        return workflow.compile(checkpointer=checkpointer)
+        return workflow.compile()
 
 
 
