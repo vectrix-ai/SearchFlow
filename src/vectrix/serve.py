@@ -52,8 +52,6 @@ async def startup_event():
     checkpointer = PostgresSaver(async_connection=pool)
     await checkpointer.acreate_tables(pool)
     print(f"Connection pool opened with max size: {pool.max_size}")
-
-
 @app.on_event("shutdown")
 async def shutdown_event():
     await pool.close()

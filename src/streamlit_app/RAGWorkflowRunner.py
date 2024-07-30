@@ -2,6 +2,7 @@ import asyncio
 from langchain_core.messages import HumanMessage
 from vectrix.graphs.basic_rag import RAGWorkflowGraph
 from vectrix.db.checkpointer import PostgresSaver
+from vectrix.streaming.processor import StreamProcessor
 from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
 
@@ -12,7 +13,7 @@ class RAGWorkflowRunner:
         self.client = Client()
         self.run_id = ""
         self.retrieval_state = ""
-        self.references = []
+        self.final_output = {}
 
     async def run(self, prompt: str, status_callback: callable):
          # Reset references at the start of each run
@@ -27,32 +28,25 @@ class RAGWorkflowRunner:
                 graph = demo_graph.create_graph(checkpointer=checkpointer)
 
                 input_message = HumanMessage(content=prompt)
-                self.references = [] 
+                self.references = []
 
-                async for event in graph.astream_events({"question": input_message}, version="v1", config=config):
+                stream_processor = StreamProcessor(config)
+                
+                async for event in stream_processor.process_stream(graph, input_message):
                     self.run_id = event['run_id']
-                    kind = event["event"]
-                    if kind == "on_chat_model_stream":
-                        if event['metadata']['langgraph_node'] == "generate_response":
-                            content = event["data"]["chunk"].content
-                            if content:
-                                yield content
-                        
-                        new_state = event['metadata']['langgraph_triggers'][0].split(':')[-1]
-                        if self.retrieval_state != new_state:
-                            self.retrieval_state = new_state
-                            status_callback(f"Running {new_state}...")
-                    elif kind == "on_chain_end" and event["name"] == "generate_response":
-                        if "documents" in event["data"]["input"]:
-                            sources = [doc.dict() for doc in event["data"]["input"]["documents"]]
-                            self.references.extend([source for source in sources])
+                    if event['type'] == 'response':
+                        yield event['chunk_content']
+
+                    if event['type'] == 'progress':
+                        status_callback(f"Running {event['status']}...")
+
+                    if event['type'] == 'final_output':
+                        self.final_output = event
 
             except Exception as e:
                 raise RuntimeError(f"An error occurred: {str(e)}")
 
-    def get_langsmith_run_url(self):
-        run = self.client.read_run(self.run_id)
-        return run.url
 
-    def get_references(self):
-        return self.references
+
+    def get_final_output(self):
+        return self.final_output

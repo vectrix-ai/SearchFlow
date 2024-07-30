@@ -206,7 +206,7 @@ class RAGWorkflowGraph:
         return {"generation": response}
     
 
-    def create_graph(self):
+    def create_graph(self, checkpointer: BaseCheckpointSaver):
         """
         Creates a state graph for the workflow.
 
@@ -216,6 +216,8 @@ class RAGWorkflowGraph:
         Returns:
             StateGraph: The compiled state graph.
         """
+        # Open the pool
+
         workflow = StateGraph(GraphState)
         workflow.add_node("retrieve", self.retrieve)  # retrieve
         workflow.add_node("grade_documents", self.grade_documents)  # grade documents
@@ -237,7 +239,7 @@ class RAGWorkflowGraph:
         workflow.add_edge("search_web", "generate_response")
         workflow.add_edge("generate_response", END)
 
-        return workflow.compile()
+        return workflow.compile(checkpointer=checkpointer)
 
 
 

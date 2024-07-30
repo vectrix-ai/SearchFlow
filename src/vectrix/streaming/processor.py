@@ -1,4 +1,4 @@
-
+from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
 
 class StreamProcessor:
@@ -16,9 +16,9 @@ class StreamProcessor:
         process_stream(graph, question): Asynchronously processes the stream of events
         from the given graph for the provided question.
     """
-    def __init__(self):
+    def __init__(self, config):
         self.client = Client()
-
+        self.config = config
 
     async def process_stream(self, graph, question):
         """
@@ -47,13 +47,16 @@ class StreamProcessor:
         loaded_json = ""
         allow_streaming = True
 
-        async for event in graph.astream_events({"question": question}, version="v1"):
+        async for event in graph.astream_events({"question": question}, version="v1", config=self.config):
             run_id = event['run_id']
             kind = event["event"]
             if kind == "on_chat_model_stream":
                 if langgraph_node != event['metadata']['langgraph_triggers']:
                     langgraph_node = event['metadata']['langgraph_triggers']
-                    yield  {"langgraph_trigger" : f"Answering Step: {langgraph_node[0].split(':')[-1]}"}
+                    yield  {
+                        "run_id" : run_id,
+                        "type" : "progress",
+                        "status" : langgraph_node[0].split(':')[-1]}
 
                 if event['metadata']['langgraph_node'] == "generate_response":
                     if event['data']['chunk'].content and 'partial_json' in event['data']['chunk'].content[0]:
@@ -62,23 +65,32 @@ class StreamProcessor:
                             # Remove {"answer": " from the loaded JSON
                             chunk_length = len(event['data']['chunk'].content[0]['partial_json'])
                             chunk = loaded_json.replace('{"answer": "', '')[-chunk_length:]
-                            if not '"' in chunk:
-                                yield {"chunk_content" : chunk}
+                            if not '.", "' in loaded_json:
+                                yield {
+                                    "run_id" : run_id,
+                                    "type" : "response",
+                                    "chunk_content" : chunk}
                             else:
                                 allow_streaming = False
                                 # Split the chunk at the last double quote
                                 last_quote_index = chunk.rfind('"')
                                 if last_quote_index != -1:
-                                    yield {"chunk_content" : chunk[:last_quote_index]}
+                                    yield {
+                                        "run_id" : run_id,
+                                        "type" : "response",
+                                        "chunk_content" : chunk[:last_quote_index]}
                                 else:
-                                    yield {"chunk_content" : chunk.split(', "quotes":')[0]}
+                                    yield {
+                                        "run_id" : run_id,
+                                        "type" : "response",
+                                        "chunk_content" : chunk.split(', "quotes":')[0]}
                                     break
                                     
             # Print the documents used to generate the answer, if any
             if kind == "on_chain_end":
                 if event["name"] == "generate_response":
-                    yield {"final_output" : event['data']['output']['generation'][0]['args']}
-
-
-        run = self.client.read_run(run_id)
-        yield {"trace_url" : run.url }
+                    yield {
+                        "run_id" : run_id,
+                        "type" : "final_output",
+                        "sources" : event['data']['output']['generation'][0]['args'],
+                        "trace_url": self.client.read_run(run_id).url}

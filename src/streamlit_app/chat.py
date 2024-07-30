@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 import os
+import re
 from dotenv import load_dotenv
 import streamlit as st
 from RAGWorkflowRunner import RAGWorkflowRunner
@@ -22,11 +23,18 @@ if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "rag_runner" not in st.session_state:
     st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id)
-if "references" not in st.session_state:
-    st.session_state.references = []
+if "final_output" not in st.session_state:
+    st.session_state.final_output = {}
 
 # Create two columns: one for chat, one for references
 chat_col, ref_col = st.columns([2, 1])
+
+def decode_unicode(text):
+    def replace_unicode_escape(match):
+        return chr(int(match.group(1), 16))
+    
+    return re.sub(r'\\u([0-9a-fA-F]{4})', replace_unicode_escape, text)
+
 
 with chat_col:
     st.title("Vectrix 💬")
@@ -41,7 +49,7 @@ with chat_col:
     with chat_container:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+                st.markdown(decode_unicode(message["content"]))
 
     # Chat input at the bottom
     with input_container:
@@ -69,28 +77,28 @@ with chat_col:
                     full_response = ""
                     async for token in st.session_state.rag_runner.run(prompt, update_status):
                         full_response += token
-                        message_placeholder.markdown(full_response + "▌")
-                    message_placeholder.markdown(full_response)
-                    st.session_state.references = st.session_state.rag_runner.get_references()
+                        message_placeholder.markdown(decode_unicode(full_response + "▌"))
+                    message_placeholder.markdown(decode_unicode(full_response))
+                    st.session_state.final_output = st.session_state.rag_runner.get_final_output()
                     return full_response
 
                 # Run the async function
                 full_response = asyncio.run(process_response())
                 
                 # Update the status: add the Langsmith Run URL and update to "Process complete"
-                langsmith_url = st.session_state.rag_runner.get_langsmith_run_url()
+                langsmith_url = st.session_state.final_output['trace_url']
                 st.caption(f"[Langsmith trace]({langsmith_url})")
                 status.update(label="Process complete!", state="complete", expanded=False)
 
         # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.session_state.messages.append({"role": "assistant", "content": decode_unicode(full_response)})
 
 with ref_col:
     st.subheader("References 📖")
-    if st.session_state.references:
-        for i, reference in enumerate(st.session_state.references):
-            with st.expander(f"{i+1}. {reference['metadata']['type'].capitalize()} result", expanded=True):
-                st.markdown(f"{reference['page_content'][:120].replace('\n', ' ')} ...")
-                st.caption(f"Link: {reference['metadata']['url']}")
+    if 'sources' in st.session_state.final_output:
+        for i, reference in enumerate(st.session_state.final_output['sources']['references']):
+            with st.expander(f"Result {i+1}.", expanded=True):
+                st.markdown(f"{reference['text'].replace('\n', ' ')} ...")
+                st.caption(f"Link: {reference['url']}")
     else:
         st.write("No references available yet.")
