@@ -1,0 +1,9 @@
+{
+  "python_version": "3.12",
+  "dockerfile_lines": [],
+  "dependencies": [],
+  "graphs": {
+    "vectrix_advanced": "src/vectrix/graphs/demo.py:DemoGraph"
+  },
+  "env": ".env"
+}

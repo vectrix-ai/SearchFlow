@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vectrix"
-version = "0.0.35"
+version = "0.0.36"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -10,7 +10,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.12,<3.13"
+python = ">=3.11,<3.13"
 protobuf = "^4.21.6"
 bs4 = "^0.0.2"
 validators = "^0.28.1"

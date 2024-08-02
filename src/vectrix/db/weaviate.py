@@ -130,7 +130,7 @@ class Weaviate:
             hybrid search using Weaviate vector store.
         """
         @chain
-        def retriever(query: str) -> List[Tuple[Document, str | None]]:
+        def retriever(query: str) -> List[Document]:
             """
             Perform hybrid search using Weaviate vector store.
 
@@ -146,16 +146,20 @@ class Weaviate:
             
             results = self.collection.query.hybrid(
                 query=query,
-                limit=3,
-                alpha=0.8,
-                return_metadata=MetadataQuery(explain_score=True),
-                query_properties=['content']
+                limit=2,
+                return_metadata=MetadataQuery(score=True, explain_score=True),
             )
             return [
-                (Document(
+                Document(
                     page_content=result.properties['content'],
-                    metadata={"title": result.properties['title'], "url": result.properties['url'], "type": result.properties['type']}
-                ), result.metadata.explain_score)
+                    metadata={
+                        "title": result.properties['title'], 
+                        "url": result.properties['url'], 
+                        "type": result.properties['type'], 
+                        "uuid": str(result.uuid),
+                        "score": result.metadata.score,
+                        }
+                )
                 for result in results.objects
             ]
 

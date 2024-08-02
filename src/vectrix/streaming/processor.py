@@ -47,6 +47,7 @@ class StreamProcessor:
         loaded_json = ""
         allow_streaming = True
 
+        
         async for event in graph.astream_events({"question": question}, version="v1", config=self.config):
             run_id = event['run_id']
             kind = event["event"]
