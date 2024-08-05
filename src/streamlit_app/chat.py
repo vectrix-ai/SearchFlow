@@ -99,7 +99,7 @@ with chat_col:
             status_element = st.empty()
 
             # Process the response
-            with status_element.status("Processing...", expanded=True) as status:
+            with status_element.status("Processing...", expanded=False) as status:
                 def update_status(message):
                     st.write(message)
 
@@ -127,5 +127,5 @@ with ref_col:
     st.subheader("References 📖")
     for i, reference in enumerate(st.session_state.final_output):
         with st.expander(f"Result {i+1}.", expanded=True):
-            st.markdown(f"{reference['source'].replace('\n', ' ')} ...")
+            st.markdown(f"{reference['source'][:200].replace('\n', ' ')} ...")
             st.caption(f"Link: {reference['url']}")

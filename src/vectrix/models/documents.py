@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 class VectorDocument(BaseModel):
@@ -11,6 +11,13 @@ class VectorDocument(BaseModel):
     content: str
     type: str
     NER: Optional[str] = None
+
+class Documents(BaseModel):
+    """
+    A list of VectorDocument objects.
+    """
+    documents: List[VectorDocument]
+
 
 class FileObject(BaseModel):
     '''

@@ -41,9 +41,7 @@ class OverallState(TypedDict):
     question: str
     question_list : List[str]
     documents: Annotated[list, operator.add]
-    unique_documents : List[Document]
-    relevant_documents: Annotated[list, operator.add]
-    reranked_documents: List[Document]
+    graded_documents: Annotated[list, operator.add]
     web_search: str
     llm_response: str
     cited_sources: List[CitedSources]
@@ -121,7 +119,7 @@ class Graph:
         prompt = hub.pull("cite_sources")
         return prompt | llm_with_tools | PydanticToolsParser(tools=[CitedSources])
     
-    async def rewrite_chat_history(self, state):
+    async def rewrite_chat_history(self, state : OverallState):
         '''
         Transform the query to procude a better question, if a chat history is present
 
@@ -143,6 +141,8 @@ class Graph:
         else:
             self.logger.info("No chat history, using original question")
             better_question = question.content
+
+        state['documents'].clear()
 
         # We replace the question with a "better question" and append the current question to the list of messages.
         print('Appending question to messages')
@@ -199,7 +199,7 @@ class Graph:
         grade = grades[0].binary_score
 
         if grade == 'yes':
-            return {"relevant_documents": [doc]}
+            return {"graded_documents": [doc]}
         
         return None
     
@@ -216,18 +216,23 @@ class Graph:
         self.logger.info("Retrieved %s documents", len(state['documents']))
         filtered_docs = self._filter_duplicate_docs(state['documents'])
         self.logger.info("Filtered down to %s unique documents", len(filtered_docs))
+        state['documents'].clear()
 
         
-        return {"unique_documents": filtered_docs}
+        return {"documents": filtered_docs}
     
 
     async def check_relevance(self, state: OverallState):
         """
         Remove an irrelevant document from the list of documents
         """
-        self.logger.info("Checking relevance of documents")
 
-        return [Send("grade_document", {"document": d, "question": state["question"]}) for d in state["unique_documents"]]
+        documents = state['documents'].copy()
+        state['documents'].clear()
+
+        self.logger.info(f"Checking relevance of {len(documents)} documents")
+
+        return [Send("grade_document", {"document": d, "question": state["question"]}) for d in documents]
 
     
 
@@ -235,9 +240,9 @@ class Graph:
         """
         Decides whether to perform a web search based on the number of retrieved documents.
         """
-        self.logger.info("Deciding whether to perform a web search")
+        self.logger.info(f"There are {len(state["graded_documents"])} valid documents.")
 
-        if len (state['reranked_documents']) == 0:
+        if len (state['graded_documents']) == 0:
             return "search_web"
         else:
             return "generate"
@@ -265,20 +270,24 @@ class Graph:
         #web_results = Document(page_content=web_results, metadata={"source": "search"})
         #documents.append(web_results)
 
-        return {"reranked_documents": documents}
+        return {"graded_documents": documents}
     
 
     async def rerank_sources(self, state: OverallState):
         """
         If we have more then one document, call a reranker model to rerank the documents
         """
-        reranked_documents = sorted(state["relevant_documents"], key=lambda x: x.metadata['score'], reverse=True)
+        reranked_documents = sorted(state["graded_documents"], key=lambda x: x.metadata['score'], reverse=True)
+        state["graded_documents"].clear()
+        state["documents"].clear()
 
         # Update the rank of each document
         for i, doc in enumerate(reranked_documents, start=1):
             doc.metadata['rank'] = i
+
         
-        return {"reranked_documents": reranked_documents}
+        
+        return {"graded_documents": reranked_documents, "documents" : reranked_documents}
     
 
     async def group_sources(self, state: OverallState):
@@ -289,7 +298,7 @@ class Graph:
         question = state["question"]
         
         sources = ""
-        for i, doc in enumerate(state["reranked_documents"], 1):
+        for i, doc in enumerate(state["graded_documents"], 1):
             sources += f"{i}. {doc.page_content}\n\n"
 
         response = await self.answer_question_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
@@ -300,12 +309,13 @@ class Graph:
         question = state["question"]
 
         sources = ""
-        for i, doc in enumerate(state["reranked_documents"], 1):
+        for i, doc in enumerate(state["graded_documents"], 1):
             sources += f"{i}. {doc.page_content}\n\nURL: {doc.metadata['url']}\n\n"
 
         response = await self.cite_sources_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
+        state["graded_documents"].clear()
 
-        return {"cited_sources": response}
+        return {"cited_sources": response, "graded_documents":  state["graded_documents"]}
 
 
 

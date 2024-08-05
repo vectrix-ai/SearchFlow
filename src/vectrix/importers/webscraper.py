@@ -1,18 +1,18 @@
 import logging
+import datetime
 from urllib.parse import urlparse
 import json
 from typing import List
 import validators
 from langchain_community.document_loaders import AsyncHtmlLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from bs4 import BeautifulSoup
-from trafilatura import extract
-from vectrix.models.documents import WebPageData
+from trafilatura import extract as trafilatura_extract
 
 logging.basicConfig(level=logging.ERROR, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-class Crawler:
+class WebCrawler:
     """
     A class used to crawl a website and extract its content and links.
 
@@ -106,7 +106,7 @@ class Crawler:
         links = list(set(links))    
         return links
     
-    def extract(self) -> list:
+    def extract(self) -> List[Document]:
             '''
             The input as a URL
             Returns the site content as Markdown and a list of links (from that same site)
@@ -156,64 +156,26 @@ class Crawler:
 
             self.logger.info("Download finished. Extracting content from the pages.")
             # Apply the excract method to each element of the list
-            
+
+
+            #docs = [Document(page_content=doc)]
+
+
             docs_transformed = [{"metadata": doc.metadata,
-                                 "content": extract(doc.page_content, output_format="json", include_comments=False)} for doc in processed_pages]
+                                 "content": json.loads(trafilatura_extract(doc.page_content, output_format="json", include_comments=False))} for doc in processed_pages]
             
-            # Convert each doc to the WebPageData object
-            docs_transformed = [WebPageData(metadata=doc["metadata"], content=json.loads(doc["content"])) for doc in docs_transformed]
 
+            
+
+            docs_transformed = [Document(page_content=doc["content"]["text"],
+                                         metadata={
+                                             "url": doc["metadata"]["source"],
+                                             "title": doc["metadata"]["title"],
+                                             "description": doc["metadata"]["description"],
+                                             "language" : doc["metadata"]["language"],
+                                             "extraction_ts" : datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                             "source_type" : "webscrape",
+                                             "source_format" : "HTML"
+                                         }) for doc in docs_transformed]
+            
             return docs_transformed
-    
-class Webchunker:
-    """
-    A class for processing and chunking web page content.
-
-    This class takes a list of WebPageData objects, which represent web pages,
-    and provides methods to extract metadata and chunk the content of these pages.
-
-    Attributes:
-        pages (List[WebPageData]): A list of WebPageData objects representing the web pages.
-        logger (logging.Logger): A logger object for logging information and errors.
-
-    Methods:
-        __extract_metadata(): Extracts metadata from the pages.
-        chunk_content(chunk_size: int = 1000, chunk_overlap: int = 0): Chunks the content of the pages.
-    """
-
-    def __init__(self, pages: List[WebPageData]):
-        """
-        Initializes a WebChunker object.
-
-        Args:
-            pages (List[WebPageData]): A list of WebPageData objects representing the pages to be processed.
-        Returns:
-            None
-        """
-        self.pages = pages
-        self.logger = logging.getLogger(__name__)
-        self.logger.info("Webchunker initialized with %s pages", len(self.pages))
-
-    def chunk_content(self, chunk_size: int = 1000, chunk_overlap: int = 0) -> list:
-        """
-        Chunk the content of the pages into smaller chunks.
-
-        Args:
-            chunk_size (int): The maximum size of each chunk in characters. Defaults to 1000.
-
-        Returns:
-            list: A list of chunks containing the content of the pages.
-        """
-        text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        model_name="gpt-4",
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        )
-        
-        metadatas = [page.metadata for page in self.pages]
-        content = [' '.join(page.content['text'].split()) for page in self.pages]
-
-        chunks = text_splitter.create_documents(content, metadatas=metadatas)
-
-        self.logger.info("Content chunked into %s chunks", len(chunks))
-        return chunks

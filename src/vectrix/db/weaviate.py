@@ -2,10 +2,10 @@ from typing import Annotated, Optional, List, Tuple, Callable
 from pydantic import BaseModel
 from langchain.schema import Document
 from langchain_core.runnables import chain
+from langchain_core.documents import Document
 import weaviate
 from weaviate.classes.config import Configure
 from weaviate.classes.query import MetadataQuery
-from vectrix.models.documents import VectorDocument
 
 class Weaviate:
     """
@@ -88,7 +88,7 @@ class Weaviate:
         self.client.collections.delete(name)
 
 
-    def add_data(self, documents: List[VectorDocument]) -> None:
+    def add_data(self, documents: List[Document]) -> None:
         """
         Adds a list of VectorDocument objects to the vector database.
 
@@ -102,11 +102,12 @@ class Weaviate:
             with self.collection.batch.dynamic() as batch:
                 for document in documents:
                     vector_object = {
-                        "title": document.title,
-                        "url": document.url,
-                        "content": document.content,
-                        "type": document.type,
-                        "NER": document.NER
+                        "title": document.metadata['title'],
+                        "url": document.metadata['url'],
+                        "content": document.page_content,
+                        "language": document.metadata['language'],
+                        "source_type": document.metadata['source_type'],
+                        "source_format" : document.metadata['source_format'],
                     }
                     batch.add_object(
                         properties=vector_object
@@ -155,7 +156,8 @@ class Weaviate:
                     metadata={
                         "title": result.properties['title'], 
                         "url": result.properties['url'], 
-                        "type": result.properties['type'], 
+                        "source_type": result.properties['source_type'],
+                        "source_format": result.properties['source_format'],
                         "uuid": str(result.uuid),
                         "score": result.metadata.score,
                         }
