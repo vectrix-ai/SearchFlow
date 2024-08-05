@@ -5,6 +5,36 @@ import re
 from dotenv import load_dotenv
 import streamlit as st
 from RAGWorkflowRunner import RAGWorkflowRunner
+import logging
+import colorlog
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+formatter = colorlog.ColoredFormatter(
+    "%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
+    datefmt=None,
+    reset=True,
+    log_colors={
+        'DEBUG':    'cyan',
+        'INFO':     'green',
+        'WARNING':  'yellow',
+        'ERROR':    'red',
+        'CRITICAL': 'red,bg_white',
+    },
+    secondary_log_colors={},
+    style='%'
+)
+
+# Create a handler and set the formatter
+handler = colorlog.StreamHandler()
+handler.setFormatter(formatter)
+
+# Add the handler to the logger
+logger.addHandler(handler)
+
+# Set the logging level (optional)
+logger.setLevel(logging.INFO)
 
 # Load environment variables
 load_dotenv()
@@ -86,7 +116,7 @@ with chat_col:
                 full_response = asyncio.run(process_response())
                 
                 # Update the status: add the Langsmith Run URL and update to "Process complete"
-                langsmith_url = st.session_state.final_output['trace_url']
+                langsmith_url = st.session_state.rag_runner.get_trace_url()
                 st.caption(f"[Langsmith trace]({langsmith_url})")
                 status.update(label="Process complete!", state="complete", expanded=False)
 
@@ -95,10 +125,7 @@ with chat_col:
 
 with ref_col:
     st.subheader("References 📖")
-    if 'sources' in st.session_state.final_output:
-        for i, reference in enumerate(st.session_state.final_output['sources']['references']):
-            with st.expander(f"Result {i+1}.", expanded=True):
-                st.markdown(f"{reference['text'].replace('\n', ' ')} ...")
-                st.caption(f"Link: {reference['url']}")
-    else:
-        st.write("No references available yet.")
+    for i, reference in enumerate(st.session_state.final_output):
+        with st.expander(f"Result {i+1}.", expanded=True):
+            st.markdown(f"{reference['source'].replace('\n', ' ')} ...")
+            st.caption(f"Link: {reference['url']}")

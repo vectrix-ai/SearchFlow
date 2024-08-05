@@ -11,7 +11,7 @@ from langchain import hub
 from langgraph.graph.message import add_messages
 from langchain.schema import Document
 from langchain.output_parsers.openai_tools import PydanticToolsParser, JsonOutputToolsParser
-from vectrix.db.checkpointer import BaseCheckpointSaver
+from vectrix.graphs.checkpointer import BaseCheckpointSaver
 from vectrix.db.weaviate import Weaviate
 from vectrix.db.postgresql import PromptManager
 

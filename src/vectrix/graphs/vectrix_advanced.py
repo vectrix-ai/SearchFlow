@@ -1,5 +1,4 @@
 import logging
-logging.basicConfig(level=logging.INFO)
 import operator
 from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
@@ -15,29 +14,8 @@ from langgraph.constants import Send
 from langchain.schema import Document
 from langchain.output_parsers.openai_tools import PydanticToolsParser
 from langchain_community.tools.tavily_search import TavilySearchResults
-from vectrix.db.checkpointer import BaseCheckpointSaver
+from vectrix.graphs.checkpointer import BaseCheckpointSaver
 from vectrix.db.weaviate import Weaviate
-from vectrix.db.postgresql import PromptManager
-
-
-
-class OverallState(TypedDict):
-    messages: Annotated[list, add_messages]
-    question: str
-    question_list : List[str]
-    documents: Annotated[list, operator.add]
-    unique_documents : List[Document]
-    relevant_documents: Annotated[list, operator.add]
-    reranked_documents: List[Document]
-    web_search: str
-    response: str
-
-class QuestionState(TypedDict):
-    question: str
-
-class DocumentState(TypedDict):
-    document: Document
-    question: str
 
 class QuestionList(BaseModel):
     questions: List[str] = Field(
@@ -58,31 +36,49 @@ class CitedSources(BaseModel):
     )
 
 
+class OverallState(TypedDict):
+    messages: Annotated[list, add_messages]
+    question: str
+    question_list : List[str]
+    documents: Annotated[list, operator.add]
+    unique_documents : List[Document]
+    relevant_documents: Annotated[list, operator.add]
+    reranked_documents: List[Document]
+    web_search: str
+    llm_response: str
+    cited_sources: List[CitedSources]
+
+class QuestionState(TypedDict):
+    question: str
+
+class DocumentState(TypedDict):
+    document: Document
+    question: str
+
 class Graph:
     def __init__(self, DB_URI: str):
         # Initialize components
         self.DB_URI = DB_URI
         weaviate = Weaviate()
         weaviate.set_colleciton('Vectrix')
-        self.database = PromptManager(DB_URI)
         self.retriever = weaviate.get_retriever()
-        self.function_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-        self.generation_llm = ChatAnthropic(model="claude-3-5-sonnet-20240620", temperature=0, streaming=True)
+        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         self.question_rewriter = self._setup_question_rewriter()
         self.question_alternatives = self._setup_question_alternatives()
         self.retrieval_grader = self._setup_retrieval_grader()
         self.web_search_tool = TavilySearchResults()
         self.answer_question_chain = self._setup_answer_question_chain()
+        self.cite_sources_chain = self._setup_cite_sources_chain()
         self.logger = logging.getLogger(__name__)
 
     def _setup_question_rewriter(self):
         re_write_prompt = hub.pull("joeywhelan/rephrase")
-        return re_write_prompt | self.function_llm | StrOutputParser()
+        return re_write_prompt | self.llm | StrOutputParser()
     
     def _setup_question_alternatives(self):
-        llm = self.function_llm.bind_tools(tools=[QuestionList])
-        messages = ChatPromptTemplate.from_template(self.database.get_prompt_by_name('generate_question_alternatives'))
-        return messages | llm | PydanticToolsParser(tools=[QuestionList])
+        llm = self.llm.bind_tools(tools=[QuestionList])
+        prompt = hub.pull("alternative_questions")
+        return prompt | llm | PydanticToolsParser(tools=[QuestionList])
     
     def _filter_duplicate_docs(self, documents : List[Document]) -> List[Document]:
         seen_uuids = set()
@@ -107,22 +103,23 @@ class Graph:
             ]
         )
 
-        llm_with_tools = self.function_llm.bind_tools([GradeDocuments])
+        llm_with_tools = self.llm.bind_tools([GradeDocuments])
         parser = PydanticToolsParser(tools=[GradeDocuments])
 
         grade_chain = grade_prompt | llm_with_tools | parser
         return grade_chain
     
     def _setup_answer_question_chain(self):
-        llm = self.generation_llm
-        messages = ChatPromptTemplate.from_template(self.database.get_prompt_by_name('answer_question'))
-        return messages | llm | StrOutputParser()
+        llm = self.llm
+        prompt = hub.pull("answer_question")
+        return prompt | llm | StrOutputParser()
     
 
     def _setup_cite_sources_chain(self):
-        llm = self.generation_llm
-        messages = ChatPromptTemplate.from_template(self.database.get_prompt_by_name('cite_sources'))
-        return messages | llm | PydanticToolsParser(tools=[CitedSources])
+        llm = self.llm
+        llm_with_tools = llm.bind_tools([CitedSources])
+        prompt = hub.pull("cite_sources")
+        return prompt | llm_with_tools | PydanticToolsParser(tools=[CitedSources])
     
     async def rewrite_chat_history(self, state):
         '''
@@ -140,13 +137,15 @@ class Graph:
 
         # Rewrite the question
 
-        if len(chat_history) > 1:
+        if len(chat_history) > 0:
             self.logger.info("Rewriting question")
             better_question = await self.question_rewriter.ainvoke({"input": question, "chat_history" : chat_history})
         else:
+            self.logger.info("No chat history, using original question")
             better_question = question.content
 
         # We replace the question with a "better question" and append the current question to the list of messages.
+        print('Appending question to messages')
         return {"question": better_question, "messages": question}
     
 
@@ -157,6 +156,8 @@ class Graph:
         question = state['question']
         question_list = await self.question_alternatives.ainvoke({"QUESTION": question})
         question_list = question_list[0].questions
+
+        self.logger.info(f"Question list: {question_list}")
 
 
         question_list.append(question)
@@ -184,6 +185,8 @@ class Graph:
         question = state['question']
         documents = await self.retriever.ainvoke(question)
 
+        self.logger.info(f"Retrieved {len(documents)} documents")
+
         return {"documents": documents}
     
     async def grade_document(self, state: DocumentState):
@@ -210,9 +213,9 @@ class Graph:
         3. Logs the number of unique documents after filtering.
         4. Determines if a web search is needed based on the number of remaining documents.
         """
-        print(f"Retrieved {len(state['documents'])} documents")
+        self.logger.info("Retrieved %s documents", len(state['documents']))
         filtered_docs = self._filter_duplicate_docs(state['documents'])
-        print(f"Filtered down to {len(filtered_docs)} unique documents")
+        self.logger.info("Filtered down to %s unique documents", len(filtered_docs))
 
         
         return {"unique_documents": filtered_docs}
@@ -222,7 +225,7 @@ class Graph:
         """
         Remove an irrelevant document from the list of documents
         """
-        print("Checking relevance")
+        self.logger.info("Checking relevance of documents")
 
         return [Send("grade_document", {"document": d, "question": state["question"]}) for d in state["unique_documents"]]
 
@@ -232,7 +235,7 @@ class Graph:
         """
         Decides whether to perform a web search based on the number of retrieved documents.
         """
-        print("Deciding web search")
+        self.logger.info("Deciding whether to perform a web search")
 
         if len (state['reranked_documents']) == 0:
             return "search_web"
@@ -250,13 +253,11 @@ class Graph:
             state (dict):  Updates documents key with appended web results
         '''
 
-        print("Searching web")
-
         question = state['question']
         documents = state['documents']
 
         docs = await self.web_search_tool.ainvoke({"query": question}, k=5)
-        print(docs[0])
+        self.logger.info(f"Web search returned {len(docs)} documents")
         for doc in docs:
             document  = Document(page_content=doc["content"], metadata={"type": "search", "url": doc["url"]})
             documents.append(document)
@@ -271,7 +272,6 @@ class Graph:
         """
         If we have more then one document, call a reranker model to rerank the documents
         """
-        print("Reranking docs")
         reranked_documents = sorted(state["relevant_documents"], key=lambda x: x.metadata['score'], reverse=True)
 
         # Update the rank of each document
@@ -281,11 +281,11 @@ class Graph:
         return {"reranked_documents": reranked_documents}
     
 
-    async def final_aswer(self, state: OverallState):
+    async def group_sources(self, state: OverallState):
         return None
     
 
-    async def generate_answer(self, state: OverallState):
+    async def response(self, state: OverallState):
         question = state["question"]
         
         sources = ""
@@ -294,7 +294,7 @@ class Graph:
 
         response = await self.answer_question_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
 
-        return {"response" : response}
+        return {"llm_response" : response}
     
     async def cite_sources(self, state: OverallState):
         question = state["question"]
@@ -303,11 +303,9 @@ class Graph:
         for i, doc in enumerate(state["reranked_documents"], 1):
             sources += f"{i}. {doc.page_content}\n\nURL: {doc.metadata['url']}\n\n"
 
-        response = await self.answer_question_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
+        response = await self.cite_sources_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
 
-        print(response)
-
-        return None
+        return {"cited_sources": response}
 
 
 
@@ -331,9 +329,9 @@ class Graph:
         workflow.add_node("grade_document", self.grade_document) #grade document
         workflow.add_node("search_web", self.search_web)  # Search the web for more documents
         workflow.add_node("rerank_sources", self.rerank_sources)  # Rerank all the sources found
-        workflow.add_node("generate", self.generate_answer)  # Generate the answer
+        workflow.add_node("response", self.response)  # Generate the answer
         workflow.add_node("cite_sources", self.cite_sources)  # Cite the sources
-        workflow.add_node("final_answer", self.final_aswer)  # Final answer
+        workflow.add_node("group_sources", self.group_sources)  # Final answer
         
 
         workflow.add_edge(START, "rewrite_chat_history")
@@ -345,16 +343,15 @@ class Graph:
         workflow.add_conditional_edges("rerank_sources", self.decide_web_search,
                                        {
                                            "search_web": "search_web",
-                                           "generate": "final_answer",
+                                           "generate": "group_sources",
                                        })
-        workflow.add_edge("search_web", "generate")
+        workflow.add_edge("search_web", "response")
         workflow.add_edge("search_web","cite_sources")
-        workflow.add_edge("final_answer", "generate")
-        workflow.add_edge("final_answer", "cite_sources")
+        workflow.add_edge("group_sources", "response")
+        workflow.add_edge("group_sources", "cite_sources")
         workflow.add_edge("cite_sources", END)
-        workflow.add_edge("generate", END)
+        workflow.add_edge("response", END)
         
 
         return workflow.compile(checkpointer=checkpointer)
-
     

@@ -43,55 +43,53 @@ class StreamProcessor:
         """
 
         run_id = ""
-        langgraph_node = ""
-        loaded_json = ""
-        allow_streaming = True
+        client  = Client()
+        current_langgraph_node = []
 
         
         async for event in graph.astream_events({"question": question}, version="v1", config=self.config):
             run_id = event['run_id']
             kind = event["event"]
-            if kind == "on_chat_model_stream":
-                if langgraph_node != event['metadata']['langgraph_triggers']:
-                    langgraph_node = event['metadata']['langgraph_triggers']
-                    yield  {
-                        "run_id" : run_id,
-                        "type" : "progress",
-                        "status" : langgraph_node[0].split(':')[-1]}
-
-                if event['metadata']['langgraph_node'] == "generate_response":
-                    if event['data']['chunk'].content and 'partial_json' in event['data']['chunk'].content[0]:
-                        loaded_json += event['data']['chunk'].content[0]['partial_json']
-                        if ('{"answer": "' in loaded_json) and allow_streaming:
-                            # Remove {"answer": " from the loaded JSON
-                            chunk_length = len(event['data']['chunk'].content[0]['partial_json'])
-                            chunk = loaded_json.replace('{"answer": "', '')[-chunk_length:]
-                            if not '.", "' in loaded_json:
-                                yield {
-                                    "run_id" : run_id,
-                                    "type" : "response",
-                                    "chunk_content" : chunk}
-                            else:
-                                allow_streaming = False
-                                # Split the chunk at the last double quote
-                                last_quote_index = chunk.rfind('"')
-                                if last_quote_index != -1:
-                                    yield {
-                                        "run_id" : run_id,
-                                        "type" : "response",
-                                        "chunk_content" : chunk[:last_quote_index]}
-                                else:
-                                    yield {
-                                        "run_id" : run_id,
-                                        "type" : "response",
-                                        "chunk_content" : chunk.split(', "quotes":')[0]}
-                                    break
-                                    
-            # Print the documents used to generate the answer, if any
-            if kind == "on_chain_end":
-                if event["name"] == "generate_response":
+            if "langgraph_node" in event["metadata"]:
+                if event["metadata"]["langgraph_node"] not in current_langgraph_node:
+                    current_langgraph_node.append(event["metadata"]["langgraph_node"])
                     yield {
-                        "run_id" : run_id,
-                        "type" : "final_output",
-                        "sources" : event['data']['output']['generation'][0]['args'],
-                        "trace_url": self.client.read_run(run_id).url}
+                        "type":"progress",
+                        "model_provider": "",
+                        "model_name": "",
+                        "run_id" : event["run_id"],
+                        "graph_node" : event["metadata"]["langgraph_node"],
+                        "data": f"Processing {event['metadata']['langgraph_node']}..."
+                        }
+
+            if kind == "on_chat_model_stream":
+                if  event["metadata"]["langgraph_node"] == "response":
+                    run_id  = event["run_id"]
+                    yield {
+                        "type":"stream",
+                        "model_provider": event["metadata"]["ls_provider"],
+                        "model_name": event["metadata"]["ls_model_name"],
+                        "run_id" : event["run_id"],
+                        "graph_node" : event["metadata"]["langgraph_node"],
+                        "data": event["data"]["chunk"].content
+                    }
+
+            if kind == "on_chain_end":
+                if event["name"] == "cite_sources":
+                    data = []
+                    for source in event["data"]["output"]['cited_sources']:
+                        data.append(
+                            {
+                                "source": source.source,
+                                "url": source.url
+                             }
+                        )
+                    yield {
+                        "type":"final_output",
+                        "model_provider": "",
+                        "model_name": "",
+                        "run_id" : event["run_id"],
+                        "graph_node" : event["metadata"]["langgraph_node"],
+                        "data": data,
+                        "trace_url": client.read_run(event["run_id"]).url
+                        }
