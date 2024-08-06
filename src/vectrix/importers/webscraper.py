@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 from bs4 import BeautifulSoup
 from trafilatura import extract as trafilatura_extract
 
-logging.basicConfig(level=logging.ERROR, 
+logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 class WebCrawler:
@@ -153,8 +153,6 @@ class WebCrawler:
                 self.logger.info("Number of links to visit: %d", len(links))
 
             processed_pages.extend(index_page)
-
-            self.logger.info("Download finished. Extracting content from the pages.")
             # Apply the excract method to each element of the list
 
 

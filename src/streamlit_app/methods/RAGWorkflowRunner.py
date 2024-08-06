@@ -6,13 +6,14 @@ from vectrix.streaming.processor import StreamProcessor
 from psycopg_pool import AsyncConnectionPool
 
 class RAGWorkflowRunner:
-    def __init__(self, db_uri: str, thread_id: str):
+    def __init__(self, db_uri: str, thread_id: str, project: str):
         self.db_uri = db_uri
         self.thread_id = thread_id
         self.run_id = ""
         self.retrieval_state = ""
         self.final_output = {}
         self.trace_url = ""
+        self.project = project
 
     async def run(self, prompt: str, status_callback: callable):
          # Reset references at the start of each run
@@ -23,7 +24,7 @@ class RAGWorkflowRunner:
                 await checkpointer.acreate_tables(pool)
 
                 config = {"configurable": {"thread_id": self.thread_id}}
-                graph = Graph(DB_URI=self.db_uri)
+                graph = Graph(DB_URI=self.db_uri, project=project)
                 graph = graph.create_graph(checkpointer=checkpointer)
 
                 input_message = HumanMessage(content=prompt)

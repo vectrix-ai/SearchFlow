@@ -116,6 +116,17 @@ class Weaviate:
         else:
             raise ValueError("No collection selected.")
         
+    def list_metadata(self) -> list:
+        '''
+        Return a list of all objects, their URL and sour
+        '''
+        if self.collection is not None:
+            items = [{"url": items.properties.get('url'), 
+                      "source_type": items.properties.get('source_type'),
+                      "source_format" : items.properties.get('source_format')} for items in self.collection.iterator()]
+            return items
+
+        
     def close(self) -> None:
         """
         Closes the connection to the Weaviate database.

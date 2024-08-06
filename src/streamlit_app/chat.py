@@ -4,9 +4,13 @@ import os
 import re
 from dotenv import load_dotenv
 import streamlit as st
-from RAGWorkflowRunner import RAGWorkflowRunner
+# Streamlit page configuration
+
+from methods.RAGWorkflowRunner import RAGWorkflowRunner
 import logging
 import colorlog
+
+# Streamlit page configuration
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -43,8 +47,7 @@ load_dotenv()
 DB_URI = os.getenv("DB_URI")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
-# Streamlit page configuration
-st.set_page_config(page_title="Vectrix RAG Chat with search", page_icon="💬", layout="wide")
+
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -52,7 +55,7 @@ if "messages" not in st.session_state:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "rag_runner" not in st.session_state:
-    st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id)
+    st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id, project=st.session_state["project"])
 if "final_output" not in st.session_state:
     st.session_state.final_output = {}
 
@@ -67,7 +70,7 @@ def decode_unicode(text):
 
 
 with chat_col:
-    st.title("Vectrix 💬")
+    st.title("Ask 💬")
 
     # Create a container for chat messages
     chat_container = st.container()
@@ -120,8 +123,11 @@ with chat_col:
                 st.caption(f"[Langsmith trace]({langsmith_url})")
                 status.update(label="Process complete!", state="complete", expanded=False)
 
+            selected = st.feedback("thumbs")
+
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": decode_unicode(full_response)})
+
 
 with ref_col:
     st.subheader("References 📖")

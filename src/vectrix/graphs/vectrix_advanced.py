@@ -54,11 +54,11 @@ class DocumentState(TypedDict):
     question: str
 
 class Graph:
-    def __init__(self, DB_URI: str):
+    def __init__(self, DB_URI: str, project: str):
         # Initialize components
         self.DB_URI = DB_URI
         weaviate = Weaviate()
-        weaviate.set_colleciton('Vectrix')
+        weaviate.set_colleciton(project)
         self.retriever = weaviate.get_retriever()
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         self.question_rewriter = self._setup_question_rewriter()
@@ -303,7 +303,7 @@ class Graph:
 
         response = await self.answer_question_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
 
-        return {"llm_response" : response}
+        return {"llm_response" : response, "messages": response}
     
     async def cite_sources(self, state: OverallState):
         question = state["question"]

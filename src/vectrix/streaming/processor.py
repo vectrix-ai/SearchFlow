@@ -1,5 +1,9 @@
 from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 class StreamProcessor:
     """
@@ -84,12 +88,22 @@ class StreamProcessor:
                                 "url": source.url
                              }
                         )
-                    yield {
-                        "type":"final_output",
-                        "model_provider": "",
-                        "model_name": "",
-                        "run_id" : event["run_id"],
-                        "graph_node" : event["metadata"]["langgraph_node"],
-                        "data": data,
-                        "trace_url": client.read_run(event["run_id"]).url
-                        }
+
+                    run_url = ""
+
+                    try :
+                        run_url = client.read_run(event["run_id"]).url
+
+                    except Exception as e:
+                        logger.error(e)
+
+                    finally:
+                        yield {
+                            "type":"final_output",
+                            "model_provider": "",
+                            "model_name": "",
+                            "run_id" : event["run_id"],
+                            "graph_node" : event["metadata"]["langgraph_node"],
+                            "data": data,
+                            "trace_url": run_url
+                            }
