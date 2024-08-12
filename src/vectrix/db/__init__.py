@@ -1,2 +1,2 @@
 from .weaviate import Weaviate
-from .postgresql import PromptManager
+from .postgresql import DB

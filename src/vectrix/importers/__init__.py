@@ -1,2 +1,2 @@
 from .webscraper import WebCrawler
-from. chunkdata import ChunkData
+from. chunkdata import chunk_content

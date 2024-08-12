@@ -23,9 +23,9 @@ with col1:
             embedding_model=embedding_model,
             model_name=model_name,
             model_url=model_url)
+        st.session_state["project"].append(project_name)
         st.success("Project added successfully!")
         # Refresh the app
-        st.rerun()
         
         
 

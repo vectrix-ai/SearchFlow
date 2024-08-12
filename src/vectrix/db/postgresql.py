@@ -1,12 +1,15 @@
 from datetime import datetime
-import logging
+from typing import List
+from vectrix import logger 
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
+from langchain_core.documents import Document
 import pytz
 
 Base = declarative_base()
 
-class PromptManager:
+class DB:
     """
     A class for managing prompts in a database.
 
@@ -17,7 +20,7 @@ class PromptManager:
         engine: SQLAlchemy database engine
         Session: SQLAlchemy session factory
 
-    Methods:
+    Methods:s
         add_prompt: Add a new prompt to the database
         update_prompt: Update an existing prompt in the database
         remove_prompt: Remove a prompt from the database
@@ -26,7 +29,7 @@ class PromptManager:
     def __init__(self, db_url):
         self.engine = create_engine(db_url)
         self.Session = sessionmaker(bind=self.engine)
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger.setup_logger()
         
         # Create the table if it doesn't exist
         Base.metadata.create_all(self.engine)
@@ -39,6 +42,110 @@ class PromptManager:
         prompt = Column(Text, nullable=False)
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
+
+    class Document(Base):
+        __tablename__ = 'documents'
+        id = Column(Integer, primary_key=True)
+        url = Column(String(255), nullable=False)
+        page_hash = Column(String(255), nullable=False)
+        domain_name = Column(String(255), nullable=False)
+        storage_location = Column(String(255), nullable=False)
+        content = Column(JSON(none_as_null=True), nullable=False)  # <--- Made this a JSON column
+        indexing_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+
+
+    def add_document(self, url : str, page_hash :str , domain_name :str , storage_location:str, content: dict):
+        """
+        Add a new document (webpage) to the database.
+
+        This method creates a new Document object with the provided information
+        and adds it to the database.
+
+        Args:
+            url (str): The URL of the webpage.
+            page_hash (str): A hash of the webpage content.
+            domain_name (str): The domain name of the webpage.
+            storage_location (str): The location where the webpage content is stored.
+
+        Returns:
+            int: The ID of the newly added document in the database.
+
+        Raises:
+            Exception: If there's an error during the database operation,
+                    the transaction is rolled back and the error is logged.
+
+        Note:
+            This method uses a new database session for the operation and
+            commits the transaction if successful. In case of an error,
+            it performs a rollback.
+        """
+        session = self.Session()
+        self.logger.info(f"Adding new webpage: {url}")
+        try:
+            new_webpage = self.Document(url=url, page_hash=page_hash, domain_name=domain_name, storage_location=storage_location, content=content)
+            session.add(new_webpage)
+            session.commit()
+            print(f"Added new webpage: {url}")
+            return new_webpage.id
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error adding webpage: {e}")
+            session.close()
+
+    def list_documents(self, domain_name):
+        """
+        List all indexed pages for a given domain name.
+        """
+        session = self.Session()
+        self.logger.info(f"Listing all pages for domain: {domain_name}")
+        try:
+            pages = session.query(self.Document).filter_by(domain_name=domain_name).all()
+            session.close()
+            return [page.url for page in pages]
+        except Exception as e:
+            session.close()
+            self.logger.error(f"Error listing pages: {e}")
+
+    def get_documents(self, domain_name : str) -> List[Document]:
+        '''
+        Get all documents from a given domain name
+        This function will return the documents as a list of Langchain Docs
+        '''
+        session = self.Session()
+        self.logger.info(f"Getting all documents for domain: {domain_name}")
+        try:
+            documents = session.query(self.Document).filter_by(domain_name=domain_name).all()
+            session.close()
+            return [Document(page_content=doc.content['raw_text'], 
+                             metadata={
+                                 "title": doc.content['title'],
+                                 "url": doc.url,
+                                 "language" : doc.content['language'],
+                                 "source_type" : "webpage",
+                                 "source_format" : "html"})for doc in documents]
+        except  Exception as e:
+            session.close()
+            self.logger.error(f"Error getting documents: {e}")
+
+
+    def remove_documents(self, id = None, domain_name = None):
+        """
+        Remove documents based on ID or domain name.
+        """
+        session = self.Session()
+        try:
+            if id:
+                session.query(self.Document).filter_by(id=id).delete()
+                session.close()
+            elif domain_name:
+                session.query(self.Document).filter_by(domain_name=domain_name).delete()
+                session.close()
+
+            session.commit()
+            print("Removed documents successfully.")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error removing documents: {e}")
 
     def add_prompt(self, name, prompt_text):
         """

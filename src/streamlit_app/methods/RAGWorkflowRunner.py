@@ -24,7 +24,7 @@ class RAGWorkflowRunner:
                 await checkpointer.acreate_tables(pool)
 
                 config = {"configurable": {"thread_id": self.thread_id}}
-                graph = Graph(DB_URI=self.db_uri, project=project)
+                graph = Graph(DB_URI=self.db_uri, project=self.project)
                 graph = graph.create_graph(checkpointer=checkpointer)
 
                 input_message = HumanMessage(content=prompt)
