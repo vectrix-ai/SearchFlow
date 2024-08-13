@@ -43,7 +43,7 @@ class DB:
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
-    class Document(Base):
+    class WebDocument(Base):
         __tablename__ = 'documents'
         id = Column(Integer, primary_key=True)
         url = Column(String(255), nullable=False)
@@ -80,12 +80,11 @@ class DB:
             it performs a rollback.
         """
         session = self.Session()
-        self.logger.info(f"Adding new webpage: {url}")
         try:
-            new_webpage = self.Document(url=url, page_hash=page_hash, domain_name=domain_name, storage_location=storage_location, content=content)
+            new_webpage = self.WebDocument(url=url, page_hash=page_hash, domain_name=domain_name, storage_location=storage_location, content=content)
             session.add(new_webpage)
             session.commit()
-            print(f"Added new webpage: {url}")
+            self.logger.info(f"Added webpage: {url}")
             return new_webpage.id
         except Exception as e:
             session.rollback()
@@ -97,9 +96,9 @@ class DB:
         List all indexed pages for a given domain name.
         """
         session = self.Session()
-        self.logger.info(f"Listing all pages for domain: {domain_name}")
+        self.logger.info("Listing all pages for domain: %s", domain_name)
         try:
-            pages = session.query(self.Document).filter_by(domain_name=domain_name).all()
+            pages = session.query(self.WebDocument).filter_by(domain_name=domain_name).all()
             session.close()
             return [page.url for page in pages]
         except Exception as e:
@@ -114,7 +113,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Getting all documents for domain: {domain_name}")
         try:
-            documents = session.query(self.Document).filter_by(domain_name=domain_name).all()
+            documents = session.query(self.WebDocument).filter_by(domain_name=domain_name).all()
             session.close()
             return [Document(page_content=doc.content['raw_text'], 
                              metadata={
