@@ -1,3 +1,4 @@
+import os
 from typing import Annotated, Optional, List, Tuple, Callable
 from pydantic import BaseModel
 from langchain.schema import Document
@@ -6,16 +7,21 @@ from langchain_core.documents import Document
 import weaviate
 from weaviate.classes.config import Configure
 from weaviate.classes.query import MetadataQuery
+from weaviate.classes.init import Auth
 
 class Weaviate:
     """
     Manages the Weaviate client and provides methods for interacting with the vector database.
     """
 
-    def __init__(self, conn_string: str = None, collection_name: str = None) -> None:
-        if conn_string is None:
+    def __init__(self, collection_name: str = None) -> None:
+        if os.getenv("ENVIROMENT") == "localhost":
             self.client = weaviate.connect_to_local()
-
+        else:
+            self.client = weaviate.connect_to_weaviate_cloud(
+                cluster_url=os.getenv("WEAVIATE_URL"),
+                auth_credentials=Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
+            )
         if collection_name is not None:
             self.collection = self.client.collections.get(name=collection_name)
         
