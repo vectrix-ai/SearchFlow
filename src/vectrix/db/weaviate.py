@@ -18,9 +18,11 @@ class Weaviate:
         if os.getenv("ENVIROMENT") == "localhost":
             self.client = weaviate.connect_to_local()
         else:
+            headers = {"X-Cohere-Api-Key": os.getenv('COHERE_API_KEY'),}
             self.client = weaviate.connect_to_weaviate_cloud(
                 cluster_url=os.getenv("WEAVIATE_URL"),
                 auth_credentials=Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
+                headers=headers
             )
         if collection_name is not None:
             self.collection = self.client.collections.get(name=collection_name)
@@ -31,8 +33,7 @@ class Weaviate:
 
     def create_collection(self, 
                           name: str, 
-                          embedding_model: Annotated[str, "Ollama", "OpenAI"],
-                          model_name: str,
+                          embedding_model: Annotated[str, "Ollama", "Cohere"],
                           model_url: str = None) -> None:
         """
         Creates a vectorizer module in Weaviate.
@@ -44,10 +45,23 @@ class Weaviate:
                     Configure.NamedVectors.text2vec_ollama(
                         name="content",
                         source_properties=["title", "content"],
-                        model=model_name,
+                        model="mxbai-embed-large:335m",
                         api_endpoint=model_url
                     )
                 ]
+            )
+
+        elif embedding_model == "Cohere":
+            self.client.collections.create(
+                name=name,
+                vectorizer_config=[
+                    Configure.NamedVectors.text2vec_cohere(
+                        name="content",
+                        source_properties=["title", "content"],
+                        model="embed-multilingual-v3.0"
+                    )
+                ],
+                # Additional parameters not shown
             )
 
         else:
