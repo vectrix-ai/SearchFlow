@@ -411,20 +411,6 @@ urllib3 = {version = ">=1.25.4,<2.2.0 || >2.2.0,<3", markers = "python_version >
 crt = ["awscrt (==0.20.11)"]
 
 [[package]]
-name = "bs4"
-version = "0.0.2"
-description = "Dummy package for Beautiful Soup (beautifulsoup4)"
-optional = false
-python-versions = "*"
-files = [
-    {file = "bs4-0.0.2-py2.py3-none-any.whl", hash = "sha256:abf8742c0805ef7f662dce4b51cca104cffe52b835238afc169142ab9b3fbccc"},
-    {file = "bs4-0.0.2.tar.gz", hash = "sha256:a48685c58f50fe127722417bae83fe6badf500d54b55f7e39ffe43b798653925"},
-]
-
-[package.dependencies]
-beautifulsoup4 = "*"
-
-[[package]]
 name = "build"
 version = "1.2.1"
 description = "A simple, correct Python build frontend"
@@ -652,16 +638,6 @@ files = [
     {file = "charset_normalizer-3.3.2-cp39-cp39-win32.whl", hash = "sha256:aed38f6e4fb3f5d6bf81bfa990a07806be9d83cf7bacef998ab1a9bd660a581f"},
     {file = "charset_normalizer-3.3.2-cp39-cp39-win_amd64.whl", hash = "sha256:b01b88d45a6fcb69667cd6d2f7a9aeb4bf53760d7fc536bf679ec94fe9f3ff3d"},
     {file = "charset_normalizer-3.3.2-py3-none-any.whl", hash = "sha256:3e4d1f6587322d2788836a99c69062fbb091331ec940e02d12d179c1d53e25fc"},
-]
-
-[[package]]
-name = "chroma"
-version = "0.2.0"
-description = "Color handling made simple."
-optional = false
-python-versions = "*"
-files = [
-    {file = "Chroma-0.2.0.tar.gz", hash = "sha256:e265bcd503e2b35c4448b83257467166c252ecf3ab610492432780691cdfb286"},
 ]
 
 [[package]]
@@ -1319,6 +1295,38 @@ codecs = ["cramjam", "lz4", "zstandard"]
 lz4 = ["lz4"]
 snappy = ["cramjam"]
 zstandard = ["zstandard"]
+
+[[package]]
+name = "fastcore"
+version = "1.6.8"
+description = "Python supercharged for fastai development"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "fastcore-1.6.8-py3-none-any.whl", hash = "sha256:ae637099bbb08f96c57601d00e68610cb05b2457ca826a1169e7c4f8af8ba243"},
+    {file = "fastcore-1.6.8.tar.gz", hash = "sha256:35423826be5005896f9211ea7ca7e995e994bd638a889f5d52ad89974903491b"},
+]
+
+[package.dependencies]
+packaging = "*"
+
+[package.extras]
+dev = ["matplotlib", "nbclassic", "nbdev (>=0.2.39)", "numpy", "pandas", "pillow", "torch"]
+
+[[package]]
+name = "fastlite"
+version = "0.0.7"
+description = "A bit of extra usability for sqlite"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "fastlite-0.0.7-py3-none-any.whl", hash = "sha256:3009389639797b49f5c4b7dc9cd5c6de49450239f28007a3dbfa01db4f5eeb40"},
+    {file = "fastlite-0.0.7.tar.gz", hash = "sha256:c9f7135a73ca89685df70300611435bf80b6889290be7bb111f9c4e28b480ae5"},
+]
+
+[package.dependencies]
+fastcore = ">=1.5.41"
+sqlite-minutils = "*"
 
 [[package]]
 name = "filelock"
@@ -2367,6 +2375,17 @@ widgetsnbextension = ">=4.0.11,<4.1.0"
 
 [package.extras]
 test = ["ipykernel", "jsonschema", "pytest (>=3.6.0)", "pytest-cov", "pytz"]
+
+[[package]]
+name = "itsdangerous"
+version = "2.2.0"
+description = "Safely pass data to untrusted environments and back."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "itsdangerous-2.2.0-py3-none-any.whl", hash = "sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef"},
+    {file = "itsdangerous-2.2.0.tar.gz", hash = "sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173"},
+]
 
 [[package]]
 name = "jedi"
@@ -5634,6 +5653,32 @@ files = [
 cli = ["click (>=5.0)"]
 
 [[package]]
+name = "python-fasthtml"
+version = "0.3.4"
+description = "The fastest way to create an HTML app"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "python-fasthtml-0.3.4.tar.gz", hash = "sha256:07943649f1905aca6d5f6c6cea34a6dca44650703945ecb9c7b506a9dba2eb60"},
+    {file = "python_fasthtml-0.3.4-py3-none-any.whl", hash = "sha256:c1d3427779f82657753363c7987a1891014a5f10e432ef13a6c8bbb5028466cd"},
+]
+
+[package.dependencies]
+beautifulsoup4 = "*"
+fastcore = ">=1.6.7"
+fastlite = ">=0.0.6"
+httpx = "*"
+itsdangerous = "*"
+oauthlib = "*"
+python-dateutil = "*"
+python-multipart = "*"
+starlette = ">0.33"
+uvicorn = {version = ">=0.30", extras = ["standard"]}
+
+[package.extras]
+dev = ["ipython", "lxml"]
+
+[[package]]
 name = "python-iso639"
 version = "2024.4.27"
 description = "ISO 639 language codes, names, and other associated information"
@@ -6776,6 +6821,20 @@ postgresql-psycopg2cffi = ["psycopg2cffi"]
 postgresql-psycopgbinary = ["psycopg[binary] (>=3.0.7)"]
 pymysql = ["pymysql"]
 sqlcipher = ["sqlcipher3_binary"]
+
+[[package]]
+name = "sqlite-minutils"
+version = "3.36.0.post4"
+description = "A fork of sqlite-utils with CLI etc removed"
+optional = false
+python-versions = "<4,>=3.7"
+files = [
+    {file = "sqlite_minutils-3.36.0.post4-py3-none-any.whl", hash = "sha256:178dabf03221ec8c7a63c04c97bb500d66f8de628d7c941c984b4851eccd901b"},
+    {file = "sqlite_minutils-3.36.0.post4.tar.gz", hash = "sha256:4a44adf3820796e2b0c24b35982c53e687a3a95d7bedbe7859c48cce6616837a"},
+]
+
+[package.dependencies]
+fastcore = "*"
 
 [[package]]
 name = "stack-data"
@@ -8257,4 +8316,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.13"
-content-hash = "66ff74fe6dd33a32ad812e204909a905a126f55c57ea78fb83e1eaa18b90afd9"
+content-hash = "56e05622da711f6ef334ac2a7ad9fd9aaa8ce3424ca7ecde228a556e0c8149fd"

@@ -81,13 +81,16 @@ class StreamProcessor:
             if kind == "on_chain_end":
                 if event["name"] == "cite_sources":
                     data = []
-                    for source in event["data"]["output"]['cited_sources']:
-                        data.append(
-                            {
-                                "source": source.source,
-                                "url": source.url
-                             }
-                        )
+                    try:
+                        for source in event["data"]["output"]['cited_sources']:
+                            data.append(
+                                {
+                                    "source": source.source,
+                                    "url": source.url
+                                }
+                            )
+                    except:
+                        data = []
 
                     run_url = ""
 

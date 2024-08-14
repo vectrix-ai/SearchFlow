@@ -54,7 +54,7 @@ class DocumentState(TypedDict):
     question: str
 
 class Graph:
-    def __init__(self, DB_URI: str, project: str):
+    def __init__(self, DB_URI: str, project: str, search_internet: bool):
         # Initialize components
         self.DB_URI = DB_URI
         weaviate = Weaviate()
@@ -68,6 +68,7 @@ class Graph:
         self.answer_question_chain = self._setup_answer_question_chain()
         self.cite_sources_chain = self._setup_cite_sources_chain()
         self.logger = logging.getLogger(__name__)
+        self.search_internet = search_internet
 
     def _setup_question_rewriter(self):
         re_write_prompt = hub.pull("joeywhelan/rephrase")
@@ -242,8 +243,9 @@ class Graph:
         """
         self.logger.info(f"There are {len(state["graded_documents"])} valid documents.")
 
-        if len (state['graded_documents']) == 0:
-            return "search_web"
+        if self.search_internet:
+            if len (state['graded_documents']) == 0:
+                return "search_web"
         else:
             return "generate"
     
@@ -309,6 +311,11 @@ class Graph:
         question = state["question"]
 
         sources = ""
+
+        if len(state["graded_documents"]) == 0:
+            self.logger.error('Unable to answer, no sources found')
+            return None
+        
         for i, doc in enumerate(state["graded_documents"], 1):
             sources += f"{i}. {doc.page_content}\n\nURL: {doc.metadata['url']}\n\n"
 

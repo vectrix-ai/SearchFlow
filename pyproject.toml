@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vectrix"
-version = "0.0.43"
+version = "0.0.44"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -12,14 +12,12 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 protobuf = "^4.21.6"
-bs4 = "^0.0.2"
 validators = "^0.28.1"
 trafilatura = "^1.9.0"
 replicate = "^0.25.2"
 langchain-cohere = "*"
 fake-useragent = "^1.5.1"
 langchain-chroma = "^0.1.1"
-chroma = "^0.2.0"
 langchain = "^0.2.7"
 langchain-postgres = "^0.0.9"
 tiktoken = "^0.7.0"
@@ -38,6 +36,8 @@ o365 = "^2.0.36"
 psycopg2-binary = "^2.9.9"
 colorlog = "^6.8.2"
 google-cloud-storage = "^2.18.2"
+unstructured = {extras = ["local-inference"], version = "^0.15.0"}
+streamlit = "^1.36.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
@@ -47,9 +47,7 @@ torch = "^2.3.0"
 pandas = "^2.2.2"
 bump2version = "^1.0.1"
 langchainhub = "^0.1.20"
-streamlit = "^1.36.0"
-langchain-experimental = "^0.0.62"
-unstructured = {extras = ["local-inference"], version = "^0.15.0"}
+python-fasthtml = "^0.3.4"
 
 [build-system]
 requires = ["poetry-core"]

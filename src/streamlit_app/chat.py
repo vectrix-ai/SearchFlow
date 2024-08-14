@@ -2,52 +2,24 @@ import asyncio
 import uuid
 import os
 import re
-from dotenv import load_dotenv
 import streamlit as st
-# Streamlit page configuration
-
 from methods.RAGWorkflowRunner import RAGWorkflowRunner
-import logging
-import colorlog
 
-# Streamlit page configuration
+from vectrix import logger
 
 # Set up logging
-logger = logging.getLogger(__name__)
+logger = logger.setup_logger()
 
-formatter = colorlog.ColoredFormatter(
-    "%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
-    datefmt=None,
-    reset=True,
-    log_colors={
-        'DEBUG':    'cyan',
-        'INFO':     'green',
-        'WARNING':  'yellow',
-        'ERROR':    'red',
-        'CRITICAL': 'red,bg_white',
-    },
-    secondary_log_colors={},
-    style='%'
-)
-
-# Create a handler and set the formatter
-handler = colorlog.StreamHandler()
-handler.setFormatter(formatter)
-
-# Add the handler to the logger
-logger.addHandler(handler)
-
-# Set the logging level (optional)
-logger.setLevel(logging.INFO)
-
-# Load environment variables
-load_dotenv()
+try:
+    # Load environment variables
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    logger.warning("dotenv not installed. Skipping loading of environment variables from .env file.")
 
 # Configuration
 DB_URI = os.getenv("DB_URI")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
-
-
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -68,9 +40,20 @@ def decode_unicode(text):
     
     return re.sub(r'\\u([0-9a-fA-F]{4})', replace_unicode_escape, text)
 
+def reset_chat():
+    st.session_state.messages = []
+    st.session_state.thread_id = str(uuid.uuid4())
+    st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id, project=st.session_state["project"])
+    st.session_state.final_output = {}
 
 with chat_col:
     st.title("Ask 💬")
+    st.caption(f"Current Project: {st.session_state['project']}")
+        
+    # Add the yes/no toggle
+    if "search_internet_toggle" not in st.session_state:
+        st.session_state.search_internet_toggle = False
+    st.session_state.search_internet_toggle = st.toggle("Enable Internet Search", st.session_state.search_internet_toggle)
 
     # Create a container for chat messages
     chat_container = st.container()
@@ -128,6 +111,9 @@ with chat_col:
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": decode_unicode(full_response)})
 
+    if st.button("Reset Chat"):
+        reset_chat()
+        st.rerun()
 
 with ref_col:
     st.subheader("References 📖")
@@ -135,3 +121,4 @@ with ref_col:
         with st.expander(f"Result {i+1}.", expanded=True):
             st.markdown(f"{reference['source'][:200].replace('\n', ' ')} ...")
             st.caption(f"Link: {reference['url']}")
+
