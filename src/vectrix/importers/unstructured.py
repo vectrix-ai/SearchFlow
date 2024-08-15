@@ -1,5 +1,5 @@
 import os
-import logging
+from vectrix import logger
 from typing import List
 from unstructured.partition.auto import partition
 from unstructured.chunking.basic import chunk_elements
@@ -14,7 +14,7 @@ class Unstructured:
     """
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger.setup_logger()
         self.logger.info("Unstructured class initialized.")
 
     def process_files(self, documents: List[FileObject], chunk_size: int = 1000) -> List[VectorDocument]:
