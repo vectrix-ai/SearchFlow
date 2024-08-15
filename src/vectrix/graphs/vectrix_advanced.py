@@ -54,9 +54,9 @@ class DocumentState(TypedDict):
     question: str
 
 class Graph:
-    def __init__(self, DB_URI: str, project: str, search_internet: bool):
+    def __init__(self, project: str, search_internet: bool):
         # Initialize components
-        self.DB_URI = DB_URI
+        #self.DB_URI = DB_URI
         weaviate = Weaviate()
         weaviate.set_colleciton(project)
         self.retriever = weaviate.get_retriever()
@@ -326,7 +326,7 @@ class Graph:
 
 
 
-    def create_graph(self, checkpointer: BaseCheckpointSaver):
+    def create_graph(self):
         """
         Creates a state graph for the workflow.
 
@@ -370,5 +370,5 @@ class Graph:
         workflow.add_edge("response", END)
         
 
-        return workflow.compile(checkpointer=checkpointer)
+        return workflow.compile()
     

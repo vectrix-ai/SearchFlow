@@ -20,9 +20,8 @@ class StreamProcessor:
         process_stream(graph, question): Asynchronously processes the stream of events
         from the given graph for the provided question.
     """
-    def __init__(self, config):
+    def __init__(self):
         self.client = Client()
-        self.config = config
 
     async def process_stream(self, graph, question):
         """
@@ -51,7 +50,7 @@ class StreamProcessor:
         current_langgraph_node = []
 
         
-        async for event in graph.astream_events({"question": question}, version="v1", config=self.config):
+        async for event in graph.astream_events({"question": question}, version="v1"):
             run_id = event['run_id']
             kind = event["event"]
             if "langgraph_node" in event["metadata"]:
