@@ -47,7 +47,7 @@ class DB:
         self.Session = sessionmaker(bind=self.engine)
         # Create the table if it doesn't exist
         Base.metadata.create_all(self.engine)
-        vectorstore = PGVector(CohereEmbeddings(), connection=self.engine)
+        vectorstore = PGVector(CohereEmbeddings(model="embed-multilingual-v3.0"), connection=self.engine)
         vectorstore.create_tables_if_not_exists()
 
     class Prompt(Base):
@@ -96,7 +96,7 @@ class DB:
         async_engine = create_async_engine(db_url)
 
         async_vectorstore = PGVector(
-            embeddings=CohereEmbeddings(),
+            embeddings=CohereEmbeddings(model="embed-multilingual-v3.0"),
             collection_name=project_name,
             connection=async_engine,
             use_jsonb=True,
