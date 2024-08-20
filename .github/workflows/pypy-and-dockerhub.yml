@@ -46,3 +46,6 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/vectrix:latest
+
+      - name: Call Google Cloud Build webhook
+        run: curl -X POST "https://cloudbuild.googleapis.com/v1/projects/vectrix-401014/triggers/rmgpgab-vectrix-europe-west1-vectrix-ai-vectrix--maprs:webhook?key=${{ secrets.GCLOUD_BUILD_KEY }}&secret=${{ secrets.GCLOUD_BUILD_SECRET }}"
