@@ -1,10 +1,8 @@
-import logging
 import operator
 from typing import List, Tuple, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -14,8 +12,8 @@ from langgraph.constants import Send
 from langchain.schema import Document
 from langchain.output_parsers.openai_tools import PydanticToolsParser
 from langchain_community.tools.tavily_search import TavilySearchResults
-from vectrix.graphs.checkpointer import BaseCheckpointSaver
-from vectrix.db.weaviate import Weaviate
+from vectrix.db import DB
+from vectrix import logger
 
 class QuestionList(BaseModel):
     questions: List[str] = Field(
@@ -54,12 +52,10 @@ class DocumentState(TypedDict):
     question: str
 
 class Graph:
-    def __init__(self, project: str, search_internet: bool):
+    def __init__(self, project: str, search_internet: bool = False):
         # Initialize components
-        #self.DB_URI = DB_URI
-        weaviate = Weaviate()
-        weaviate.set_colleciton(project)
-        self.retriever = weaviate.get_retriever()
+        self.db = DB()
+        self.project = project
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         self.question_rewriter = self._setup_question_rewriter()
         self.question_alternatives = self._setup_question_alternatives()
@@ -67,7 +63,7 @@ class Graph:
         self.web_search_tool = TavilySearchResults()
         self.answer_question_chain = self._setup_answer_question_chain()
         self.cite_sources_chain = self._setup_cite_sources_chain()
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger.setup_logger(level="WARNING")
         self.search_internet = search_internet
 
     def _setup_question_rewriter(self):
@@ -147,7 +143,7 @@ class Graph:
 
         # We replace the question with a "better question" and append the current question to the list of messages.
         print('Appending question to messages')
-        return {"question": better_question, "messages": question}
+        return {"question": better_question}
     
 
     async def generate_question_alternatives(self, state):
@@ -184,7 +180,17 @@ class Graph:
             state (dict): Updates documents key with relevant documents
         '''
         question = state['question']
-        documents = await self.retriever.ainvoke(question)
+        results = await self.db.asimilarity_search(question=question, project_name=self.project)
+        documents = []
+
+        # Add the second element of the tuple (score) to the document metadata
+        if results is not None:
+            for doc in results:
+                try: 
+                    doc[0].metadata['score'] = doc[1]
+                    documents.append(doc[0])
+                except:
+                    print(doc)
 
         self.logger.info(f"Retrieved {len(documents)} documents")
 
@@ -246,6 +252,8 @@ class Graph:
         if self.search_internet:
             if len (state['graded_documents']) == 0:
                 return "search_web"
+            else:
+                return "generate"
         else:
             return "generate"
     
@@ -279,6 +287,7 @@ class Graph:
         """
         If we have more then one document, call a reranker model to rerank the documents
         """
+        self.logger.info(f"Reranking {len(state['graded_documents'])} documents")
         reranked_documents = sorted(state["graded_documents"], key=lambda x: x.metadata['score'], reverse=True)
         state["graded_documents"].clear()
         state["documents"].clear()

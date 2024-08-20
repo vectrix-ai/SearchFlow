@@ -18,7 +18,6 @@ except ImportError:
     logger.warning("dotenv not installed. Skipping loading of environment variables from .env file.")
 
 # Configuration
-DB_URI = os.getenv("DB_URI")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 # Initialize session state
@@ -27,7 +26,7 @@ if "messages" not in st.session_state:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "rag_runner" not in st.session_state:
-    st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id, project=st.session_state["project"])
+    st.session_state.rag_runner = RAGWorkflowRunner(st.session_state.thread_id, project=st.session_state["project"])
 if "final_output" not in st.session_state:
     st.session_state.final_output = {}
 
@@ -43,7 +42,7 @@ def decode_unicode(text):
 def reset_chat():
     st.session_state.messages = []
     st.session_state.thread_id = str(uuid.uuid4())
-    st.session_state.rag_runner = RAGWorkflowRunner(DB_URI, st.session_state.thread_id, project=st.session_state["project"])
+    st.session_state.rag_runner = RAGWorkflowRunner(st.session_state.thread_id, project=st.session_state["project"])
     st.session_state.final_output = {}
 
 with chat_col:

@@ -1,56 +1,48 @@
 import streamlit as st
-from vectrix.importers import WebCrawler, ChunkData
-from vectrix.db import Weaviate
+import pandas as pd
+from vectrix.importers import WebScraper, chunk_content
 
-weaviate = Weaviate()
+if "url" not in st.session_state:
+    st.session_state.url = ""
+
+if "urls" not in st.session_state:
+    st.session_state.urls = []
 
 st.title("Add Data")
 st.subheader("Scrape website")
 url = st.text_input("URL")
-startswith = st.text_input("URL must start with (optional)", value=url)
+if st.button("Get all links"):
+    st.session_state.url = url
+    with st.spinner("Retrieving sitemap ..."):
+        webscraper = WebScraper(url)
+        st.session_state.urls = webscraper.get_all_links()
 
-def scrape_website():
-    crawler = WebCrawler(url, startswith=startswith if startswith else url)
-    documents = []
+df = pd.DataFrame(
+    {
+        "links" : st.session_state.urls,
+        "extract" : [True] * len(st.session_state.urls)
+    }
+)
+
+if len(df) != 0:
+    st.data_editor(
+        data=df,
+        column_config={"extract": st.column_config.CheckboxColumn(
+            "Extract Webpage",
+            help="Check to extract content from the webpage",
+            default=True
+        )},
+        disabled=["links"],
+        hide_index=True
+    )
+
+    if st.button("Add to database"):
+        selected_links = df[df["extract"] == True]["links"].tolist()
+        with st.spinner("Downloading pages ..."):
+            webscraper = WebScraper(url)
+            webscraper.download_pages(urls=selected_links, project_name=st.session_state.project)
+            st.success("Data added to the database")
     
-    for item in crawler.extract():
-        if isinstance(item, dict):
-            # This is a status update
-            yield item
-        else:
-            # This is the final list of documents
-            documents.extend(item)
-    
-    if documents:
-        chunked_webdata = ChunkData.chunk_content(documents, chunk_size=500, chunk_overlap=50)
-        weaviate.set_colleciton(st.session_state["project"])
-        weaviate.add_data(chunked_webdata)
-        return f"Scraping completed, extracted {len(documents)} pages"
-    else:
-        return "No documents were extracted. Please check the URL and try again."
-
-if st.button("Submit"):
-    with st.status("Scraping website...", expanded=True) as status:
-        pages_scraped = st.empty()
-        links_remaining = st.empty()
-        
-        for result in scrape_website():
-            if isinstance(result, dict):
-                status.update(label=f"Status: {result['status']}", state="running")
-                if 'pages_scraped' in result:
-                    pages_scraped.text(f"Pages scraped: {result['pages_scraped']}")
-                if 'links_remaining' in result:
-                    links_remaining.text(f"Links remaining: {result['links_remaining']}")
-            else:
-                # Final result
-                if "completed" in result.lower():
-                    status.update(label=result, state="complete")
-                else:
-                    status.update(label=result, state="error")
-
 st.divider()
-st.subheader("Upload file")
-uploaded_file = st.file_uploader("Choose a file")
-
-st.divider()
-st.subheader("Load from OneDrive ☁️")
+st.subheader('Upload Files')
+uploaded_files = st.file_uploader("Choose a file", accept_multiple_files=True, type=[".pfd", ".doc", ".docx", ".txt"])

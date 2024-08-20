@@ -1,12 +1,8 @@
 import streamlit as st
-from vectrix.db import Weaviate
 import pandas as pd
 
-
 # Database connection
-weaviate = Weaviate()
-weaviate.set_colleciton(st.session_state["project"])
-SOURCES_DF = pd.DataFrame(weaviate.list_metadata()).drop_duplicates()
+SOURCES_DF = pd.DataFrame(st.session_state.db.get_collection_metdata(st.session_state.project)).drop_duplicates()
 
 st.title("Sources")
 st.subheader("Statistics 📊")
@@ -20,7 +16,7 @@ col3.metric("Amount of formats", SOURCES_DF['source_format'].nunique())
 
 st.subheader("Indexed Data")
 
-st.dataframe(SOURCES_DF, 
+st.dataframe(SOURCES_DF[["url", "title", "source_type", "source_format", "language"]], 
             width=800,
             column_config={
                         "url" : st.column_config.LinkColumn(),

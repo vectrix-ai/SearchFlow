@@ -1,3 +1,4 @@
+import uuid
 from typing import List
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -5,7 +6,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def chunk_content(documents: List[Document], chunk_size: int = 1000, chunk_overlap: int = 0) -> List[Document]:
     """
-    Chunk the content of the pages into smaller chunks.
+    Chunk the content of the pages into smaller chunks. Will also add UUIDs to the chunks.
 
     Args:
         chunk_size (int): The maximum size of each chunk in characters. Defaults to 1000.
@@ -23,4 +24,8 @@ def chunk_content(documents: List[Document], chunk_size: int = 1000, chunk_overl
     content = [' '.join(doc.page_content.split()) for doc in documents]
 
     chunks = text_splitter.create_documents(content, metadatas=metadatas)
+
+    for chunk in chunks:
+        chunk.metadata['uuid'] = str(uuid.uuid4())
+        
     return chunks

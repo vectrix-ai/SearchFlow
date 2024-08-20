@@ -1,17 +1,21 @@
+from dotenv import load_dotenv
+load_dotenv()
 import streamlit as st
-from vectrix.db import Weaviate
+from vectrix.db import DB
 from vectrix import logger
 
 
 
-weaviate = Weaviate()
 logger = logger.setup_logger()
 
 if "project" not in st.session_state:
     st.session_state.project = ''
 
+if "db" not in st.session_state:
+    st.session_state.db = DB()
+
 if "projects" not in st.session_state:
-    st.session_state.projects = weaviate.list_collections()
+    st.session_state.projects = st.session_state.db.list_projects()
 
 def select_project():
     

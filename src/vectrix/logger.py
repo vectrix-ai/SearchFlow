@@ -1,9 +1,16 @@
 import logging
 import colorlog
 
-def setup_logger():
+def setup_logger(level: str = "WARNING"):
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    if level == "WARNING":
+        logger.setLevel(logging.WARNING)
+    elif level == "INFO":
+        logger.setLevel(logging.INFO)
+    elif level == "DEBUG":
+        logger.setLevel(logging.DEBUG)
+    else:
+        raise ValueError("Invalid logging level. Please choose from 'DEBUG', 'INFO', or 'WARNING'.")
 
     handler = colorlog.StreamHandler()
     handler.setFormatter(colorlog.ColoredFormatter(

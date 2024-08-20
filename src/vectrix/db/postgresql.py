@@ -1,60 +1,18 @@
 import os
-import pg8000
 from datetime import datetime
-from typing import List
+from typing import Annotated, Optional, List, Tuple, Callable
 from vectrix import logger
-import sqlalchemy
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, text
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
-from google.cloud.sql.connector import Connector, IPTypes
 from langchain_core.documents import Document
+from langchain_cohere import CohereEmbeddings
+from langchain_postgres.vectorstores import PGVector
+
 import pytz
 
 Base = declarative_base()
-
-def connect_with_connector() -> sqlalchemy.engine.base.Engine:
-    """
-    Initializes a connection pool for a Cloud SQL instance of Postgres.
-
-    Uses the Cloud SQL Python Connector package.
-    """
-    # Note: Saving credentials in environment variables is convenient, but not
-    # secure - consider a more secure solution such as
-    # Cloud Secret Manager (https://cloud.google.com/secret-manager) to help
-    # keep secrets safe.
-
-    instance_connection_name = os.environ[
-        "INSTANCE_CONNECTION_NAME"
-    ]  # e.g. 'project:region:instance'
-    db_user = os.environ["DB_USER"]  # e.g. 'my-db-user'
-    db_pass = os.environ["DB_PASS"]  # e.g. 'my-db-password'
-    db_name = os.environ["DB_NAME"]  # e.g. 'my-database'
-
-    ip_type = IPTypes.PRIVATE if os.environ.get("PRIVATE_IP") else IPTypes.PUBLIC
-
-    # initialize Cloud SQL Python Connector object
-    connector = Connector()
-
-    def getconn() -> pg8000.dbapi.Connection:
-        conn: pg8000.dbapi.Connection = connector.connect(
-            instance_connection_name,
-            "pg8000",
-            user=db_user,
-            password=db_pass,
-            db=db_name,
-            ip_type=ip_type,
-        )
-        return conn
-
-    # The Cloud SQL Python Connector can be used with SQLAlchemy
-    # using the 'creator' argument to 'create_engine'
-    pool = sqlalchemy.create_engine(
-        "postgresql+pg8000://",
-        creator=getconn,
-        # ...
-    )
-    return pool
 
 class DB:
     """
@@ -73,12 +31,19 @@ class DB:
         remove_prompt: Remove a prompt from the database
         get_all_prompts: Retrieve all prompts from the database
     """
-    def __init__(self, db_url):
-        #self.engine = create_engine(db_url)
-        self.engine = connect_with_connector()
-        self.Session = sessionmaker(bind=self.engine)
+    def __init__(self):
         self.logger = logger.setup_logger()
-        
+        self.db_name = os.getenv('DB_NAME')
+        self.db_user = os.getenv('DB_USER')
+        self.db_password = os.getenv('DB_PASSWORD')
+        self.db_host = os.getenv('DB_HOST')
+        self.db_port = os.getenv('DB_PORT')
+        self.db_url = f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        try:
+            self.engine = create_engine(self.db_url)
+        except:
+            self.logger.error('Unable to connect to database, please check the connection string: %s', self.db_url)
+        self.Session = sessionmaker(bind=self.engine)
         # Create the table if it doesn't exist
         Base.metadata.create_all(self.engine)
 
@@ -91,109 +56,200 @@ class DB:
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
-    class WebDocument(Base):
-        __tablename__ = 'documents'
+
+    class Project(Base):
+        __tablename__ = 'projects'
         id = Column(Integer, primary_key=True)
-        url = Column(String(255), nullable=False)
-        page_hash = Column(String(255), nullable=False)
-        domain_name = Column(String(255), nullable=False)
-        storage_location = Column(String(255), nullable=False)
-        content = Column(JSON(none_as_null=True), nullable=False)  # <--- Made this a JSON column
-        indexing_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+        name = Column(String(255), nullable=False)
+        description = Column(Text, nullable=False)
+        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
+    class APIKeys(Base):
+        __tablename__ = 'api_keys'
+        id = Column(Integer, primary_key=True)
+        name = Column(String(255), nullable=False)
+        key = Column(String(255), nullable=False)
+        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
-    def add_document(self, url : str, page_hash :str , domain_name :str , storage_location:str, content: dict):
+    def list_projects(self):
         """
-        Add a new document (webpage) to the database.
+        List all projects in the database.
+        """
 
-        This method creates a new Document object with the provided information
-        and adds it to the database.
+        session = self.Session()
+        try:
+            projects = session.query(DB.Project).all()
+            session.close()
+            return [project.name for project in projects]
+        except Exception as e:
+            session.close()
+
+
+    async def asimilarity_search(self, question: str, project_name: str):
+
+        db_url = f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        async_engine = create_async_engine(db_url)
+
+        async_vectorstore = PGVector(
+            embeddings=CohereEmbeddings(),
+            collection_name=project_name,
+            connection=async_engine,
+            use_jsonb=True,
+            create_extension=False,
+            async_mode=True,
+        )
+
+        result = await async_vectorstore.asimilarity_search_with_relevance_scores(question, k=3)
+
+        # Add the score to the result metadata
+
+        return result
+    
+    def list_scraped_urls(self) -> List[str]:
+        """
+        List all scraped URLs in the database.
+        """
+        session = self.Session()
+        query = text("""
+            SELECT DISTINCT jsonb_extract_path_text(cmetadata, 'url') as url
+            FROM langchain_pg_embedding
+            WHERE jsonb_extract_path_text(cmetadata, 'url') IS NOT NULL
+        """)
+        result = session.execute(query)
+        unique_urls = [row.url for row in result]
+        session.close()
+        return unique_urls
+    
+    def get_collection_metdata(self, project_name: str):
+        '''
+        Get the metadata of a collection
+        '''
+        query = text(f"""
+            select
+            langchain_pg_embedding.cmetadata as metadata
+            from
+            langchain_pg_embedding
+            join langchain_pg_collection on langchain_pg_embedding.collection_id = langchain_pg_collection.uuid
+            where
+            langchain_pg_collection.name = '{project_name}'
+        """)
+        session = self.Session()
+        result = session.execute(query)
+        metadata = [row.metadata for row in result]
+        session.close()
+        return metadata
+
+    def add_documents(self, documents: List[Document], project_name: str):
+        '''
+        Calculate Vectors for a set of documents and upload them to the database
+        '''
+
+        vectorstore = PGVector(
+            embeddings=CohereEmbeddings(),
+            collection_name=project_name,
+            connection=self.engine,
+            use_jsonb=True,
+        )
+
+        ids = [doc.metadata["uuid"] for doc in documents]
+        result = vectorstore.add_documents(documents, ids=ids)
+
+    def similarity_search(self, project_name: str, query: str, top_k: int = 3):
+        '''
+        Search for similar documents in a project
+        '''
+        vectorstore = PGVector(
+            embeddings=self.embeddings,
+            collection_name=project_name,
+            connection=self.engine,
+            use_jsonb=True,
+        )
+
+        result = vectorstore.similarity_search(query, top_k=top_k)
+        return result
+ 
+    def create_project(self, name, description):
+        """
+        Add a new project to the database.
 
         Args:
-            url (str): The URL of the webpage.
-            page_hash (str): A hash of the webpage content.
-            domain_name (str): The domain name of the webpage.
-            storage_location (str): The location where the webpage content is stored.
+            name (str): The name of the project.
+            description (str): The description of the project.
 
         Returns:
-            int: The ID of the newly added document in the database.
+            int: The ID of the newly added project if successful, None otherwise.
 
         Raises:
-            Exception: If there's an error during the database operation,
-                    the transaction is rolled back and the error is logged.
-
-        Note:
-            This method uses a new database session for the operation and
-            commits the transaction if successful. In case of an error,
-            it performs a rollback.
+            Exception: If there's an error during the database operation.
         """
         session = self.Session()
+        self.logger.info(f"Adding new project: {name}")
         try:
-            new_webpage = self.WebDocument(url=url, page_hash=page_hash, domain_name=domain_name, storage_location=storage_location, content=content)
-            session.add(new_webpage)
+            existing_project = session.query(self.Project).filter_by(name=name).first()
+            if existing_project:
+                self.logger.error(f"Project with name '{name}' already exists. Skipping creation.")
+                return existing_project.id
+
+            new_project = self.Project(name=name, description=description)
+            session.add(new_project)
             session.commit()
-            self.logger.info(f"Added webpage: {url}")
-            return new_webpage.id
+            vectorstore = PGVector(
+                embeddings=self.embeddings,
+                collection_name=name,
+                connection=self.engine,
+                use_jsonb=True,
+            )
+            vectorstore.create_collection()
+            self.logger.info(f"Added new project: {name}")
+            return new_project.id
+        
         except Exception as e:
             session.rollback()
-            self.logger.error(f"Error adding webpage: {e}")
+            self.logger.error(f"Error adding project: {e}")
+        finally:
             session.close()
 
-    def list_documents(self, domain_name):
+    def remove_project(self, project_name):
         """
-        List all indexed pages for a given domain name.
-        """
-        session = self.Session()
-        self.logger.info("Listing all pages for domain: %s", domain_name)
-        try:
-            pages = session.query(self.WebDocument).filter_by(domain_name=domain_name).all()
-            session.close()
-            return [page.url for page in pages]
-        except Exception as e:
-            session.close()
-            self.logger.error(f"Error listing pages: {e}")
+        Remove a project from the database.
 
-    def get_documents(self, domain_name : str) -> List[Document]:
-        '''
-        Get all documents from a given domain name
-        This function will return the documents as a list of Langchain Docs
-        '''
-        session = self.Session()
-        self.logger.info(f"Getting all documents for domain: {domain_name}")
-        try:
-            documents = session.query(self.WebDocument).filter_by(domain_name=domain_name).all()
-            session.close()
-            return [Document(page_content=doc.content['raw_text'], 
-                             metadata={
-                                 "title": doc.content['title'],
-                                 "url": doc.url,
-                                 "language" : doc.content['language'],
-                                 "source_type" : "webpage",
-                                 "source_format" : "html"})for doc in documents]
-        except  Exception as e:
-            session.close()
-            self.logger.error(f"Error getting documents: {e}")
+        Args:
+            project_name (str): The name of the project to remove.
 
+        Returns:
+            bool: True if the project was successfully removed, False otherwise.
 
-    def remove_documents(self, id = None, domain_name = None):
-        """
-        Remove documents based on ID or domain name.
+        Raises:
+            Exception: If there's an error during the database operation.
         """
         session = self.Session()
+        self.logger.info(f"Removing project: {project_name}")
         try:
-            if id:
-                session.query(self.Document).filter_by(id=id).delete()
-                session.close()
-            elif domain_name:
-                session.query(self.Document).filter_by(domain_name=domain_name).delete()
-                session.close()
-
-            session.commit()
-            print("Removed documents successfully.")
+            project = session.query(self.Project).filter_by(name=project_name).first()
+            if project:
+                session.delete(project)
+                session.commit()
+                vectorstore = PGVector(
+                    embeddings=self.embeddings,
+                    collection_name=project_name,
+                    connection=self.engine,
+                    use_jsonb=True,
+                )
+                vectorstore.delete_collection()
+                self.logger.info(f"Removed project: {project_name}")
+                return True
+            else:
+                self.logger.error(f"No project found with name: {project_name}")
+                return False
         except Exception as e:
             session.rollback()
-            self.logger.error(f"Error removing documents: {e}")
-
+            self.logger.error(f"Error removing project: {e}")
+            return False
+        finally:
+            session.close()
+ 
     def add_prompt(self, name, prompt_text):
         """
         Add a new prompt to the database.
@@ -328,5 +384,96 @@ class DB:
         try:
             prompts = session.query(self.Prompt).all()
             return prompts
+        finally:
+            session.close()
+    
+    def add_api_key(self, name, key):
+        """
+        Add a new API key to the database.
+
+        Args:
+            name (str): The name of the API key.
+            key (str): The API key.
+
+        Returns:
+            int: The ID of the newly added API key if successful, None otherwise.
+
+        Raises:
+            Exception: If there's an error during the database operation.
+        """
+        session = self.Session()
+        self.logger.info(f"Adding new API key: {name}")
+        try:
+            new_key = self.APIKeys(name=name, key=key)
+            session.add(new_key)
+            session.commit()
+            print(f"Added new API key: {name}")
+            return new_key.id
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error adding API key: {e}")
+        finally:
+            session.close()
+
+    def remove_api_key(self, name: str):
+        """
+        Remove an API key from the database.
+
+        Args:
+            name (str): The name of the API key to remove.
+
+        Returns:
+            bool: True if the API key was successfully removed, False otherwise.
+
+        Raises:
+            Exception: If there's an error during the database operation.
+        """
+        session = self.Session()
+        self.logger.info(f"Removing API key: {name}")
+        try:
+            key = session.query(self.APIKeys).filter_by(name=name).first()
+            if key:
+                session.delete(key)
+                session.commit()
+                print(f"Removed API key: {name}")
+                return True
+            else:
+                print(f"No API key found with name: {name}")
+                return False
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error removing API key: {e}")
+            return False
+        finally:
+            session.close()
+
+
+    def get_api_key_by_name(self, name):
+        """
+        Get an API key from the database by its name.
+        """
+        session = self.Session()
+        self.logger.info(f"Retrieving API key by name: {name}")
+        try:
+            key = session.query(self.APIKeys).filter_by(name=name).first()
+            if key:
+                return key.key
+            else:
+                self.logger.error(f"No API key found with name: {name}")
+                return None
+        except Exception as e:
+            self.logger.error(f"Error retrieving API key by name: {e}")  
+        finally:
+            session.close()
+
+    def list_api_keys(self) -> List[dict]:
+        """
+        List all API keys in the database. As a list of dicts
+        """
+        session = self.Session()
+        self.logger.info("Retrieving all API keys")
+        try:
+            keys = session.query(self.APIKeys).all()
+            return [{"name": key.name, "key": key.key} for key in keys]
         finally:
             session.close()

@@ -1,6 +1,6 @@
 import asyncio
 from vectrix import logger
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from vectrix.graphs.vectrix_advanced import Graph
 from vectrix.graphs.checkpointer import PostgresSaver
 from vectrix.streaming.processor import StreamProcessor
@@ -8,8 +8,7 @@ import streamlit as st
 
 
 class RAGWorkflowRunner:
-    def __init__(self, db_uri: str, thread_id: str, project: str):
-        self.db_uri = db_uri
+    def __init__(self, thread_id: str, project: str):
         self.thread_id = thread_id
         self.run_id = ""
         self.retrieval_state = ""
@@ -32,7 +31,7 @@ class RAGWorkflowRunner:
 
             stream_processor = StreamProcessor()
             
-            async for event in stream_processor.process_stream(graph, input_message):
+            async for event in stream_processor.process_stream(graph, input_message, st.session_state["messages"]):
                 self.run_id = event['run_id']
                 if event['type'] == 'stream':
                     yield event['data']

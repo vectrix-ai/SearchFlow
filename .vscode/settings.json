@@ -1,3 +1,11 @@
 {
-    "python.analysis.typeCheckingMode": "basic"
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.lint": true,
+  "deno.unstable": true,
+  "python.analysis.typeCheckingMode": "basic"
 }

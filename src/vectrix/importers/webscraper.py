@@ -11,6 +11,7 @@ from trafilatura.downloads import add_to_compressed_dict, load_download_buffer, 
 from langchain_core.documents import Document
 from vectrix import logger
 from vectrix.db import DB
+from vectrix.importers.chunkdata import chunk_content
 
 class WebScraper:
     '''
@@ -21,7 +22,7 @@ class WebScraper:
         self.url = url
         self.my_config = deepcopy(DEFAULT_CONFIG)
         self.my_config['DEFAULT']['SLEEP_TIME'] = '1'
-        self.db = DB(db_url=os.getenv('DB_URI'))
+        self.db = DB()
         self.downoad_threads = 10
 
 
@@ -64,19 +65,17 @@ class WebScraper:
         """
         return urlparse(url).netloc
     
-
-    def get_all_pages(self, links: List[str]) -> List[Document]:
+    def download_pages(self, urls: List[str], project_name: str):
         """
-        Downloads all pages from a list of URLs.
-        Returns all data as Langchain Documentss
+        Downloads all pages from a URL and stores
         """
         domain_name = WebScraper.extract_domain(self.url)
-        already_downloaded = self.db.list_documents(domain_name)
+        already_downloaded = self.db.list_scraped_urls()
 
         if already_downloaded:
-            to_download = [link for link in links if link not in already_downloaded]
+            to_download = [url for url in urls if url not in already_downloaded]
         else:
-            to_download = links
+            to_download = urls
 
         to_download = add_to_compressed_dict(to_download)
 
@@ -85,17 +84,21 @@ class WebScraper:
             for url, result in buffered_downloads(bufferlist, self.downoad_threads):
                 downloaded_page = extract(result, output_format='json', include_links=True, with_metadata=True, config=self.my_config)
                 if downloaded_page:
-                    page_hash = hashlib.sha256(downloaded_page.encode()).hexdigest()
-                    self.db.add_document(
-                        url=url,
-                        page_hash=page_hash,
-                        domain_name=domain_name,
-                        storage_location="",
-                        content=json.loads(downloaded_page)
+                    downloaded_page = json.loads(downloaded_page)
+                    doc = Document(
+                        page_content=downloaded_page['raw_text'],
+                        metadata={
+                            "title": downloaded_page['title'],
+                            "url": url,
+                            "language": downloaded_page['language'],
+                            "source_type": "webpage",
+                            "source_format": "html"
+                        }
                     )
 
-        return self.db.get_documents(domain_name)
-        
+                    chunked_docs = chunk_content([doc])
+                    self.db.add_documents(chunked_docs, project_name=project_name)
 
+        return None
 
 
