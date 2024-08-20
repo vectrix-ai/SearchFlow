@@ -42,13 +42,20 @@ add_data_page = st.Page("add_data.py", title="Add Data", icon="📝")
 manage_projects = st.Page("manage_projects.py", title="Manage Projects", icon="📁")
 view_sources = st.Page("view_sources.py", title="View Sources", icon="💾")
 
-pg = st.navigation(
-    {
-        "Ask": [chat_page],
-        "Manage Data": [add_data_page, view_sources],
-        "Settings" : [manage_projects]
-    }
-)
+if len(st.session_state.projects) == 0:
+    pg = st.navigation(
+        {
+            "Settings" : [manage_projects]
+        }
+    )
+else:
+     pg = st.navigation(
+        {
+            "Ask": [chat_page],
+            "Manage Data": [add_data_page, view_sources],
+            "Settings" : [manage_projects]
+        }
+    )
 
 st.set_page_config(page_title="Vectrix RAG", page_icon="💬", layout="wide")
 

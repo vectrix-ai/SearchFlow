@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 from typing import Annotated, Optional, List, Tuple, Callable
 from vectrix import logger
@@ -46,6 +47,8 @@ class DB:
         self.Session = sessionmaker(bind=self.engine)
         # Create the table if it doesn't exist
         Base.metadata.create_all(self.engine)
+        vectorstore = PGVector(CohereEmbeddings(), connection=self.engine)
+        vectorstore.create_tables_if_not_exists()
 
     class Prompt(Base):
         __tablename__ = 'prompts'

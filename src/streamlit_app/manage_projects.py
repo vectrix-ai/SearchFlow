@@ -9,8 +9,7 @@ with st.popover("Add project"):
     name = st.text_input("Project name")
     description = st.text_area("Description")
     if st.button("Add"):
-        db.create_project(name, description)
-        options = DB.list_projects()
-        st.session_state.projects = options
+        st.session_state.db.create_project(name, description)
+        st.session_state.projects = st.session_state.db.list_projects()
         st.rerun()
 
