@@ -25,3 +25,4 @@ else:
                 column_config={
                             "url" : st.column_config.LinkColumn(),
                         })
+

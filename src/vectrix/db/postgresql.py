@@ -1,19 +1,19 @@
 import os
 import uuid
 from datetime import datetime
-from typing import Annotated, Optional, List, Tuple, Callable
+from typing import List, Annotated
 from vectrix import logger
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
 from langchain_core.documents import Document
 from langchain_cohere import CohereEmbeddings
 from langchain_postgres.vectorstores import PGVector
+from vectrix.db.classes import Tables
 
 import pytz
 
-Base = declarative_base()
 
 class DB:
     """
@@ -34,6 +34,7 @@ class DB:
     """
     def __init__(self):
         self.logger = logger.setup_logger()
+        self.embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
         self.db_name = os.getenv('DB_NAME')
         self.db_user = os.getenv('DB_USER')
         self.db_password = os.getenv('DB_PASSWORD')
@@ -45,36 +46,11 @@ class DB:
         except:
             self.logger.error('Unable to connect to database, please check the connection string: %s', self.db_url)
         self.Session = sessionmaker(bind=self.engine)
-        # Create the table if it doesn't exist
-        Base.metadata.create_all(self.engine)
-        vectorstore = PGVector(CohereEmbeddings(model="embed-multilingual-v3.0"), connection=self.engine)
+        self.tables = Tables(self.engine)
+        
+        vectorstore = PGVector(self.embeddings, connection=self.engine)
         vectorstore.create_tables_if_not_exists()
 
-    class Prompt(Base):
-        __tablename__ = 'prompts'
-
-        id = Column(Integer, primary_key=True)
-        name = Column(String(255), nullable=False)
-        prompt = Column(Text, nullable=False)
-        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
-        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
-
-
-    class Project(Base):
-        __tablename__ = 'projects'
-        id = Column(Integer, primary_key=True)
-        name = Column(String(255), nullable=False)
-        description = Column(Text, nullable=False)
-        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
-        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
-
-    class APIKeys(Base):
-        __tablename__ = 'api_keys'
-        id = Column(Integer, primary_key=True)
-        name = Column(String(255), nullable=False)
-        key = Column(String(255), nullable=False)
-        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
-        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
     def list_projects(self):
         """
@@ -83,7 +59,7 @@ class DB:
 
         session = self.Session()
         try:
-            projects = session.query(DB.Project).all()
+            projects = session.query(self.tables.Project).all()
             session.close()
             return [project.name for project in projects]
         except Exception as e:
@@ -96,7 +72,7 @@ class DB:
         async_engine = create_async_engine(db_url)
 
         async_vectorstore = PGVector(
-            embeddings=CohereEmbeddings(model="embed-multilingual-v3.0"),
+            embeddings=self.embeddings,
             collection_name=project_name,
             connection=async_engine,
             use_jsonb=True,
@@ -150,7 +126,7 @@ class DB:
         '''
 
         vectorstore = PGVector(
-            embeddings=CohereEmbeddings(),
+            embeddings=self.embeddings,
             collection_name=project_name,
             connection=self.engine,
             use_jsonb=True,
@@ -190,12 +166,12 @@ class DB:
         session = self.Session()
         self.logger.info(f"Adding new project: {name}")
         try:
-            existing_project = session.query(self.Project).filter_by(name=name).first()
+            existing_project = session.query(self.tables.Project).filter_by(name=name).first()
             if existing_project:
                 self.logger.error(f"Project with name '{name}' already exists. Skipping creation.")
                 return existing_project.id
 
-            new_project = self.Project(name=name, description=description)
+            new_project = self.tables.Project(name=name, description=description)
             session.add(new_project)
             session.commit()
             vectorstore = PGVector(
@@ -230,9 +206,11 @@ class DB:
         session = self.Session()
         self.logger.info(f"Removing project: {project_name}")
         try:
-            project = session.query(self.Project).filter_by(name=project_name).first()
+            project = session.query(self.tables.Project).filter_by(name=project_name).first()
             if project:
                 session.delete(project)
+                session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).delete()
+                session.query(self.tables.ScrapeStatus).filter_by(project_name=project_name).delete()
                 session.commit()
                 vectorstore = PGVector(
                     embeddings=self.embeddings,
@@ -270,7 +248,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Adding new prompt: {name}")
         try:
-            new_prompt = self.Prompt(name=name, prompt=prompt_text)
+            new_prompt = self.tables.Prompt(name=name, prompt=prompt_text)
             session.add(new_prompt)
             session.commit()
             print(f"Added new prompt: {name}")
@@ -299,7 +277,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Updating prompt with ID: {prompt_id}")
         try:
-            prompt = session.query(self.Prompt).filter_by(id=prompt_id).first()
+            prompt = session.query(self.tables.Prompt).filter_by(id=prompt_id).first()
             if prompt:
                 if name:
                     prompt.name = name
@@ -328,7 +306,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Retrieving prompt by name: {name}")
         try:
-            prompt = session.query(self.Prompt).filter_by(name=name).first()
+            prompt = session.query(self.tables.Prompt).filter_by(name=name).first()
             if prompt:
                 return prompt.prompt
             else:
@@ -355,7 +333,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Removing prompt with ID: {prompt_id}")
         try:
-            prompt = session.query(self.Prompt).filter_by(id=prompt_id).first()
+            prompt = session.query(self.tables.Prompt).filter_by(id=prompt_id).first()
             if prompt:
                 session.delete(prompt)
                 session.commit()
@@ -385,7 +363,7 @@ class DB:
         session = self.Session()
         self.logger.info("Retrieving all prompts")
         try:
-            prompts = session.query(self.Prompt).all()
+            prompts = session.query(self.tables.Prompt).all()
             return prompts
         finally:
             session.close()
@@ -407,7 +385,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Adding new API key: {name}")
         try:
-            new_key = self.APIKeys(name=name, key=key)
+            new_key = self.tables.APIKeys(name=name, key=key)
             session.add(new_key)
             session.commit()
             print(f"Added new API key: {name}")
@@ -434,7 +412,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Removing API key: {name}")
         try:
-            key = session.query(self.APIKeys).filter_by(name=name).first()
+            key = session.query(self.tables.APIKeys).filter_by(name=name).first()
             if key:
                 session.delete(key)
                 session.commit()
@@ -458,7 +436,7 @@ class DB:
         session = self.Session()
         self.logger.info(f"Retrieving API key by name: {name}")
         try:
-            key = session.query(self.APIKeys).filter_by(name=name).first()
+            key = session.query(self.tables.APIKeys).filter_by(name=name).first()
             if key:
                 return key.key
             else:
@@ -476,7 +454,112 @@ class DB:
         session = self.Session()
         self.logger.info("Retrieving all API keys")
         try:
-            keys = session.query(self.APIKeys).all()
+            keys = session.query(self.tables.APIKeys).all()
             return [{"name": key.name, "key": key.key} for key in keys]
+        finally:
+            session.close()
+
+    def set_scrape_status(
+        self,
+
+        project_name: str,
+        status: str,
+        base_url = None
+    ):
+        """
+        Set or update the scrape status for a given base URL and project name.
+        """
+        session = self.Session()
+        self.logger.info(f"Setting/updating scrape status for project: {project_name}")
+        try:
+            # Try to get an existing status
+            existing_status = session.query(self.tables.ScrapeStatus).filter_by(
+                project_name=project_name
+            ).first()
+
+            if existing_status:
+                # Update existing status
+                existing_status.status = status
+                self.logger.info(f"Updated existing status for base URL: {base_url}")
+                result_id = existing_status.id
+            else:
+                # Create new status
+                new_status = self.tables.ScrapeStatus(
+                    base_url=base_url,
+                    status=status,
+                    project_name=project_name
+                )
+                session.add(new_status)
+                self.logger.info(f"Created new status for base URL: {base_url}")
+                result_id = new_status.id
+
+            session.commit()
+            print(f"Set/updated scrape status for base URL: {base_url}")
+            return result_id
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error setting/updating scrape status: {e}")
+        finally:
+            session.close()
+        
+    def add_links_to_confirm(self, links: List[str], base_url : str, project_name: str):
+        '''
+        Add a list of links to the database
+        '''
+        session = self.Session()
+        self.logger.info(f"Adding links to confirm for base URL: {base_url}")
+        try:
+            for link in links:
+                new_link = self.tables.LinksToConfirm(url=link, base_url=base_url, project_name=project_name)
+                session.add(new_link)
+            session.commit()
+            print(f"Added links to confirm for base URL: {base_url}")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error adding links to confirm: {e}")
+        finally:
+            session.close()
+
+    def remove_uploaded_links(self, project_name: str):
+        '''
+        Remove all uploaded links from the database
+        '''
+        session = self.Session()
+        self.logger.info(f"Removing uploaded links for project name: {project_name}")
+        try:
+            session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).delete()
+            session.commit()
+            print(f"Removed uploaded links for base URL: {project_name}")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error removing uploaded links: {e}")
+        finally:
+            session.close()
+
+    def get_scrape_status(self, project_name: str) -> List[dict] | None:
+        '''
+        Get the scrape status of all links for a project
+        '''
+        session = self.Session()
+        self.logger.info(f"Getting scrape status for project: {project_name}")
+        try:
+            status = session.query(self.tables.ScrapeStatus).filter_by(project_name=project_name).all()
+            return [{"base_url": s.base_url, "status": s.status, "last_update": s.update_date} for s in status]
+        except Exception as e:
+            self.logger.error(f"Error getting scrape status: {e}")
+        finally:
+            session.close()
+
+    def get_links_to_confirm(self, project_name: str) -> List[dict] | None:
+        '''
+        Return a list of all links that can be confirmed for scraping
+        '''
+        session = self.Session()
+        self.logger.info(f"Getting links to confirm for project: {project_name}")
+        try:
+            links = session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).all()
+            return [{"url": l.url, "base_url": l.base_url} for l in links]
+        except Exception as e:
+            self.logger.error(f"Error getting links to confirm: {e}")
         finally:
             session.close()

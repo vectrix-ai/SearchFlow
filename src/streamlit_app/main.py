@@ -32,15 +32,17 @@ def select_project():
     logger.warning(f"Selected project: {project}")
     
     st.session_state.project = project
+    if st.sidebar.button('Refresh Sources 🔁'):
+        st.rerun()
     return project
 
 st.logo("src/streamlit_app/assets/logo_small.png", link="https://vectrix.ai")
 
 # Streamlit page configuration
 chat_page = st.Page("chat.py", title="Ask", icon="💬")
-add_data_page = st.Page("add_data.py", title="Add Data", icon="📝")
+scrape_data = st.Page("scrape_data.py", title="Scrape Website", icon="🔍")
 manage_projects = st.Page("manage_projects.py", title="Manage Projects", icon="📁")
-view_sources = st.Page("view_sources.py", title="View Sources", icon="💾")
+manage_sources = st.Page("manage_sources.py", title="Manage Sources", icon="📚")
 
 if len(st.session_state.projects) == 0:
     pg = st.navigation(
@@ -52,9 +54,9 @@ else:
      pg = st.navigation(
         {
             "Ask": [chat_page],
-            "Manage Data": [add_data_page, view_sources],
+            "Sources": [scrape_data, manage_sources],
             "Settings" : [manage_projects]
-        }
+        },
     )
 
 st.set_page_config(page_title="Vectrix RAG", page_icon="💬", layout="wide")
@@ -62,4 +64,5 @@ st.set_page_config(page_title="Vectrix RAG", page_icon="💬", layout="wide")
 # Call select_project() before pg.run()
 
 select_project()
+
 pg.run()

@@ -17,16 +17,16 @@ class WebScraper:
     '''
     This class uses trafilatura as a web scraper
     '''
-    def __init__(self, url):
+    def __init__(self, project_name: str):
         self.logger = logger.setup_logger()
-        self.url = url
         self.my_config = deepcopy(DEFAULT_CONFIG)
         self.my_config['DEFAULT']['SLEEP_TIME'] = '1'
         self.db = DB()
         self.downoad_threads = 10
+        self.project_name = project_name
 
 
-    def get_all_links(self, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> List[str]:
+    def get_all_links(self, base_url: str, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> List[str]:
         '''
         Scrapes a website and returns a list of all discovered links.
 
@@ -46,16 +46,18 @@ class WebScraper:
         Note:
             This function logs the number of links at the start and end of the crawling process.
         '''
-        to_visit, known_links = focused_crawler(self.url, max_seen_urls=1, config=self.my_config)
+        self.db.set_scrape_status(base_url=base_url, status="Scraping links", project_name=self.project_name)
+        to_visit, known_links = focused_crawler(base_url, max_seen_urls=1, config=self.my_config)
         self.logger.info("Starting to scrape %s links", len(known_links))
-        to_visit, known_links = focused_crawler(self.url,
+        to_visit, known_links = focused_crawler(base_url,
                                                 max_seen_urls=max_seen_urls,
                                                 max_known_urls=max_known_urls,
                                                 todo=to_visit,
                                                 known_links=known_links,
                                                 config=self.my_config)
         self.logger.info("Finished scraping %s links", len(known_links))
-
+        self.db.add_links_to_confirm(links=known_links, project_name=self.project_name, base_url=base_url)
+        self.db.set_scrape_status(base_url=base_url, status="Confirm page import", project_name=self.project_name)
         return known_links
     
     @staticmethod
@@ -69,7 +71,6 @@ class WebScraper:
         """
         Downloads all pages from a URL and stores
         """
-        domain_name = WebScraper.extract_domain(self.url)
         already_downloaded = self.db.list_scraped_urls()
 
         if already_downloaded:
@@ -78,6 +79,9 @@ class WebScraper:
             to_download = urls
 
         to_download = add_to_compressed_dict(to_download)
+
+        self.db.set_scrape_status(status="Importing pages", project_name=project_name)
+        self.db.remove_uploaded_links(project_name=project_name)
 
         while to_download.done is False:
             bufferlist, url_store = load_download_buffer(url_store=to_download, sleep_time=0)
@@ -98,7 +102,7 @@ class WebScraper:
 
                     chunked_docs = chunk_content([doc])
                     self.db.add_documents(chunked_docs, project_name=project_name)
-
+        self.db.set_scrape_status(status="Website indexed", project_name=project_name)
         return None
 
 
