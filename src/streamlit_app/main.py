@@ -6,7 +6,7 @@ from vectrix import logger
 
 
 
-logger = logger.setup_logger()
+st.session_state.logger = logger.setup_logger(name="Streamlit App", level="ERROR")
 
 if "project" not in st.session_state:
     st.session_state.project = ''
@@ -29,7 +29,7 @@ def select_project():
         key="project_selector_unique"
     )
 
-    logger.warning(f"Selected project: {project}")
+    st.session_state.logger.warning(f"Selected project: {project}")
     
     st.session_state.project = project
     if st.sidebar.button('Refresh Sources 🔁'):
@@ -42,6 +42,7 @@ st.logo("src/streamlit_app/assets/logo_small.png", link="https://vectrix.ai")
 chat_page = st.Page("chat.py", title="Ask", icon="💬")
 scrape_data = st.Page("scrape_data.py", title="Scrape Website", icon="🔍")
 manage_projects = st.Page("manage_projects.py", title="Manage Projects", icon="📁")
+upload_files = st.Page("upload_files.py", title="Upload Files", icon="⬆️")
 manage_sources = st.Page("manage_sources.py", title="Manage Sources", icon="📚")
 
 if len(st.session_state.projects) == 0:
@@ -54,12 +55,12 @@ else:
      pg = st.navigation(
         {
             "Ask": [chat_page],
-            "Sources": [scrape_data, manage_sources],
+            "Sources": [scrape_data, upload_files, manage_sources],
             "Settings" : [manage_projects]
         },
     )
 
-st.set_page_config(page_title="Vectrix RAG", page_icon="💬", layout="wide")
+st.set_page_config(page_title="Vectrix Assistant", page_icon="💬", layout="wide")
 
 # Call select_project() before pg.run()
 

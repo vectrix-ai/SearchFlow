@@ -1,5 +1,4 @@
 import asyncio
-from vectrix import logger
 from langchain_core.messages import HumanMessage, AIMessage
 from vectrix.graphs.vectrix_advanced import Graph
 from vectrix.graphs.checkpointer import PostgresSaver
@@ -15,13 +14,12 @@ class RAGWorkflowRunner:
         self.final_output = {}
         self.trace_url = ""
         self.project = project
-        self.logger = logger.setup_logger()
 
     async def run(self, prompt: str, status_callback: callable):
          # Reset references at the start of each run
         try:
             checkpointer = PostgresSaver()
-            self.logger.warning("Creating graph for project %s", st.session_state['project'])
+            st.session_state.logger.warning("Creating graph for project %s", st.session_state['project'])
 
             graph = Graph(project=st.session_state['project'], search_internet=st.session_state.search_internet_toggle)
             graph = graph.create_graph()

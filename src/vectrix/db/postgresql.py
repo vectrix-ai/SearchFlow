@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
+from supabase import create_client, Client
 from langchain_core.documents import Document
 from langchain_cohere import CohereEmbeddings
 from langchain_postgres.vectorstores import PGVector
@@ -33,7 +34,7 @@ class DB:
         get_all_prompts: Retrieve all prompts from the database
     """
     def __init__(self):
-        self.logger = logger.setup_logger()
+        self.logger = logger.setup_logger(name="DB", level="INFO")
         self.embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
         self.db_name = os.getenv('DB_NAME')
         self.db_user = os.getenv('DB_USER')
@@ -47,6 +48,7 @@ class DB:
             self.logger.error('Unable to connect to database, please check the connection string: %s', self.db_url)
         self.Session = sessionmaker(bind=self.engine)
         self.tables = Tables(self.engine)
+        self.supabase: Client = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
         
         vectorstore = PGVector(self.embeddings, connection=self.engine)
         vectorstore.create_tables_if_not_exists()
@@ -100,6 +102,31 @@ class DB:
         unique_urls = [row.url for row in result]
         session.close()
         return unique_urls
+    
+    def remove_by_url(self, project_name: str, url: str) -> None:
+        '''
+        Remove all documents that have the specified URL in their metadata
+
+        args:
+            project_name (str): The name of the project
+            url (str): The URL to search for
+
+        returns:
+            None
+        '''
+        query = text(f"""
+            DELETE FROM langchain_pg_embedding
+            WHERE cmetadata->>'url' = '{url}'
+            AND collection_id = (
+                SELECT uuid
+                FROM langchain_pg_collection
+                WHERE name = '{project_name}'
+            )
+        """)
+        session = self.Session()
+        session.execute(query)
+        session.commit()
+        session.close()
     
     def get_collection_metdata(self, project_name: str):
         '''
@@ -164,7 +191,6 @@ class DB:
             Exception: If there's an error during the database operation.
         """
         session = self.Session()
-        self.logger.info(f"Adding new project: {name}")
         try:
             existing_project = session.query(self.tables.Project).filter_by(name=name).first()
             if existing_project:
@@ -181,6 +207,7 @@ class DB:
                 use_jsonb=True,
             )
             vectorstore.create_collection()
+            self.supabase.storage.create_bucket(name)
             self.logger.info(f"Added new project: {name}")
             return new_project.id
         
@@ -204,13 +231,13 @@ class DB:
             Exception: If there's an error during the database operation.
         """
         session = self.Session()
-        self.logger.info(f"Removing project: {project_name}")
         try:
             project = session.query(self.tables.Project).filter_by(name=project_name).first()
             if project:
                 session.delete(project)
                 session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).delete()
                 session.query(self.tables.ScrapeStatus).filter_by(project_name=project_name).delete()
+                session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).delete()
                 session.commit()
                 vectorstore = PGVector(
                     embeddings=self.embeddings,
@@ -219,6 +246,7 @@ class DB:
                     use_jsonb=True,
                 )
                 vectorstore.delete_collection()
+                self.supabase.storage.delete_bucket(project_name)
                 self.logger.info(f"Removed project: {project_name}")
                 return True
             else:
@@ -561,5 +589,97 @@ class DB:
             return [{"url": l.url, "base_url": l.base_url} for l in links]
         except Exception as e:
             self.logger.error(f"Error getting links to confirm: {e}")
+        finally:
+            session.close()
+
+    def add_file(self, filename: str, project_name: str, file_path: str):
+        '''
+        Add an uploaded file to the database
+        '''
+        file_extension = filename.split(".")[-1]
+        file_uuid = str(uuid.uuid4())
+        path_on_supastorage = f"{str(file_uuid)}.{file_extension}"
+
+        session = self.Session()
+        try:
+            new_file = self.tables.UploadedFiles(
+                filename=filename,
+                project_name=project_name,
+                bucket_name=project_name,
+                url=path_on_supastorage
+            )
+            session.add(new_file)
+
+                # Caluculate MIME type
+            if file_extension == "pdf":
+                mime_type = "application/pdf"
+            elif file_extension == "txt":
+                mime_type = "text/plain"
+            elif file_extension == "docx":
+                mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            elif file_extension == "pptx":
+                mime_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            else:
+                mime_type = "text/html"
+
+            with open(file_path, 'rb') as f:
+                self.supabase.storage.from_(project_name).upload(
+                    file=f,
+                    path=path_on_supastorage,
+                    file_options={
+                        "content-type": mime_type
+                    }
+                    )
+            session.commit()
+            self.logger.info(f"Added uploaded file: {filename}")
+
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error adding uploaded file: {e}")
+        finally:
+            session.close()
+            return path_on_supastorage
+
+    def list_files(self, project_name: str):
+        '''
+        List all uploaded files for a project
+        '''
+        session = self.Session()
+        self.logger.info(f"Listing uploaded files for project: {project_name}")
+        file_details = []
+        try:
+            files = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).all()
+            for file in files:
+                signed_url = self.supabase.storage.from_(project_name).create_signed_url(file.url, expires_in=3600)
+                file_details.append(
+                    {
+                        "filename": file.filename,
+                        "signed_download_url": signed_url['signedURL'],
+                        "creation_date": file.creation_date,
+                        "update_date": file.update_date
+                    }
+                )
+            return file_details
+        except Exception as e:
+            self.logger.error(f"Error listing uploaded files: {e}")
+        finally:
+            session.close()
+
+    def remove_file(self, project_name: str, file_name: str):
+        '''
+        Remove an uploaded file from the database
+        '''
+        session = self.Session()
+        try:
+            file_url = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name, filename=file_name).first()
+            url = file_url.url
+            self.supabase.storage.from_(project_name).remove([url])
+            session.query(self.tables.UploadedFiles).filter_by(project_name=project_name, filename=file_name).delete()
+            self.remove_by_url(project_name, url)
+            session.commit()
+            self.logger.info(f"Removed uploaded file: {file_name}")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error removing uploaded file: {e}")
         finally:
             session.close()

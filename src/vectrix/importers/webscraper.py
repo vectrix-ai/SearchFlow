@@ -18,12 +18,11 @@ class WebScraper:
     This class uses trafilatura as a web scraper
     '''
     def __init__(self, project_name: str):
-        self.logger = logger.setup_logger()
+        self.logger = logger.setup_logger(name="WebScraper", level="ERROR")
         self.my_config = deepcopy(DEFAULT_CONFIG)
         self.my_config['DEFAULT']['SLEEP_TIME'] = '1'
         self.db = DB()
         self.downoad_threads = 10
-        self.project_name = project_name
 
 
     def get_all_links(self, base_url: str, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> List[str]:

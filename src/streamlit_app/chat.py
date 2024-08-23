@@ -5,17 +5,16 @@ import re
 import streamlit as st
 from methods.RAGWorkflowRunner import RAGWorkflowRunner
 
-from vectrix import logger
 
 # Set up logging
-logger = logger.setup_logger()
+
 
 try:
     # Load environment variables
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    logger.warning("dotenv not installed. Skipping loading of environment variables from .env file.")
+    st.session_state.logger.warning("dotenv not installed. Skipping loading of environment variables from .env file.")
 
 # Configuration
 os.environ["LANGCHAIN_TRACING_V2"] = "true"

@@ -21,8 +21,6 @@ else:
     col2.metric("Total Sources", SOURCES_DF['source_type'].nunique())
     col3.metric("Amount of formats", SOURCES_DF['source_format'].nunique())
     st.dataframe(SOURCES_DF[["url", "title", "source_type", "source_format", "language"]], 
-                width=800,
                 column_config={
                             "url" : st.column_config.LinkColumn(),
                         })
-

@@ -1,9 +1,7 @@
 from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
-import logging
+from vectrix import logger
 
-
-logger = logging.getLogger(__name__)
 
 class StreamProcessor:
     """
@@ -22,6 +20,7 @@ class StreamProcessor:
     """
     def __init__(self):
         self.client = Client()
+        self.logger = logger.setup_logger(name='StreamProcessor', level="WARNING")
 
     async def process_stream(self, graph, question, messages):
         """
@@ -97,7 +96,7 @@ class StreamProcessor:
                         run_url = client.read_run(event["run_id"]).url
 
                     except Exception as e:
-                        logger.error(e)
+                        self.logger.error(e)
 
                     finally:
                         yield {

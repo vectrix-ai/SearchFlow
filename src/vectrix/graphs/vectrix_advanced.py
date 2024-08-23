@@ -63,7 +63,7 @@ class Graph:
         self.web_search_tool = TavilySearchResults()
         self.answer_question_chain = self._setup_answer_question_chain()
         self.cite_sources_chain = self._setup_cite_sources_chain()
-        self.logger = logger.setup_logger(level="WARNING")
+        self.logger = logger.setup_logger(name="Graph", level="WARNING")
         self.search_internet = search_internet
 
     def _setup_question_rewriter(self):

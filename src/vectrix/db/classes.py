@@ -13,13 +13,11 @@ class Tables:
 
     class Prompt(Base):
         __tablename__ = 'prompts'
-
         id = Column(Integer, primary_key=True)
         name = Column(String(255), nullable=False)
         prompt = Column(Text, nullable=False)
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
-
 
     class Project(Base):
         __tablename__ = 'projects'
@@ -52,5 +50,15 @@ class Tables:
         base_url = Column(String(255), nullable=True)
         status = Column(String(255), nullable=False)
         project_name = Column(String(255), nullable=False)
+        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
+
+    class UploadedFiles(Base):
+        __tablename__ = 'uploaded_files'
+        id = Column(Integer, primary_key=True)
+        filename = Column(String(255), nullable=False)
+        project_name = Column(String(255), nullable=False)
+        bucket_name = Column(String(255), nullable=False)
+        url = Column(String(255), nullable=False)
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
