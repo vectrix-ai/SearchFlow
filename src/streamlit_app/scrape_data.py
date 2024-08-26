@@ -27,7 +27,6 @@ with col1:
 
 st.subheader('Scrape job status')
 scrape_job_status = pd.DataFrame(st.session_state.db.get_scrape_status(project_name=st.session_state.project))
-scrape_job_status = scrape_job_status.dropna(subset=['base_url'])
 if len(scrape_job_status) > 0:
     st.dataframe(scrape_job_status, hide_index=True)
 else:
