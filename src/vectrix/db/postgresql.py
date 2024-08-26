@@ -235,6 +235,9 @@ class DB:
             project = session.query(self.tables.Project).filter_by(name=project_name).first()
             if project:
                 session.delete(project)
+                files = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).all()
+                for file in files:
+                    self.supabase.storage.from_(project_name).remove([file.url])
                 session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).delete()
                 session.query(self.tables.ScrapeStatus).filter_by(project_name=project_name).delete()
                 session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).delete()
@@ -592,13 +595,29 @@ class DB:
         finally:
             session.close()
 
-    def add_file(self, filename: str, project_name: str, file_path: str):
+    def add_file(self, project_name: str, document_data: tuple):
         '''
         Add an uploaded file to the database
+
+        args:
+        document_data (tuple): List of tuples containing (bytes_data, filename)
+        project_name (str): The name of the project to associate the document with
+
+
         '''
+        filename = document_data[1]
         file_extension = filename.split(".")[-1]
+
         file_uuid = str(uuid.uuid4())
         path_on_supastorage = f"{str(file_uuid)}.{file_extension}"
+
+        # Temporary store the file
+        file_path = f"temp/{str(file_uuid)}/{filename}"
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'wb') as f:
+            f.write(document_data[0])
+
+
 
         session = self.Session()
         try:
@@ -632,6 +651,9 @@ class DB:
                     )
             session.commit()
             self.logger.info(f"Added uploaded file: {filename}")
+            # Remove the temporary file and it's folder
+            os.remove(file_path)
+            os.rmdir(os.path.dirname(file_path))
 
         except Exception as e:
             session.rollback()

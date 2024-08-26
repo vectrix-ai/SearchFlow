@@ -19,19 +19,14 @@ if st.button('Submit'):
         for i, file in enumerate(uploaded_files):
             bytes_data = file.read()
             # Store locally in a temp folder
-            temp_file_path = f"temp/{str(uuid.uuid4())}/{file.name}"
-            os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
-            with open(temp_file_path, 'wb') as f:
-                f.write(bytes_data)
             # Empty the uploaded files variable
             files.upload_file(
-                document_paths=[temp_file_path],
+                document_data=[(bytes_data, file.name)],
                 project_name=st.session_state.project,
                 inference_type="local"
             )
 
             # Now remove the local file and folder
-            os.remove(temp_file_path)
             # Update progress bar
             progress_bar.progress((i + 1) / total_files)
 
