@@ -23,6 +23,7 @@ class WebScraper:
         self.my_config['DEFAULT']['SLEEP_TIME'] = '1'
         self.db = DB()
         self.downoad_threads = 10
+        self.project_name = project_name
 
 
     def get_all_links(self, base_url: str, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> List[str]:

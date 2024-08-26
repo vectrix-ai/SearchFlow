@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vectrix"
-version = "0.0.61"
+version = "0.0.63"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@dataframe.be>"]
 license = "MIT"
@@ -46,6 +46,11 @@ bump2version = "^1.0.1"
 langchainhub = "^0.1.20"
 python-fasthtml = "^0.3.4"
 unstructured = {extras = ["all-docs"], version = "^0.15.7"}
+pytest = "^8.3.2"
+pre-commit = "^3.8.0"
+
+[tool.pytest]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["poetry-core"]
