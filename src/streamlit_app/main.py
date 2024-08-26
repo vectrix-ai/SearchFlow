@@ -4,7 +4,7 @@ import streamlit as st
 from vectrix.db import DB
 from vectrix import logger
 
-
+from importlib.metadata import version, PackageNotFoundError
 
 st.session_state.logger = logger.setup_logger(name="Streamlit App", level="ERROR")
 
@@ -17,6 +17,12 @@ if "db" not in st.session_state:
 if "projects" not in st.session_state:
     st.session_state.projects = st.session_state.db.list_projects()
 
+def get_package_version(package_name):
+    try:
+        return version(package_name)
+    except PackageNotFoundError:
+        return "Unknown"
+    
 def select_project():
     
     if len(st.session_state.projects) == 0:
@@ -30,10 +36,13 @@ def select_project():
     )
 
     st.session_state.logger.warning(f"Selected project: {project}")
+
     
     st.session_state.project = project
     if st.sidebar.button('Refresh Sources 🔁'):
         st.rerun()
+        
+    st.sidebar.text(f"App version {get_package_version("vectrix")}")
     return project
 
 st.logo("src/streamlit_app/assets/logo_small.png", link="https://vectrix.ai")
