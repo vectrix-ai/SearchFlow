@@ -137,7 +137,7 @@ class Graph:
             better_question = await self.question_rewriter.ainvoke({"input": question, "chat_history" : chat_history})
         else:
             self.logger.info("No chat history, using original question")
-            better_question = question.content
+            better_question = question
 
         state['documents'].clear()
 
@@ -247,7 +247,7 @@ class Graph:
         """
         Decides whether to perform a web search based on the number of retrieved documents.
         """
-        self.logger.info(f"There are {len(state["graded_documents"])} valid documents.")
+        #self.logger.info(f"There are {len(state["graded_documents"])} valid documents.")
 
         if self.search_internet:
             if len (state['graded_documents']) == 0:
@@ -381,3 +381,5 @@ class Graph:
 
         return workflow.compile()
     
+
+vectrix_graph = Graph(project="test")

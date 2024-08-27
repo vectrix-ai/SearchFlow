@@ -18,11 +18,14 @@ class StreamProcessor:
         process_stream(graph, question): Asynchronously processes the stream of events
         from the given graph for the provided question.
     """
-    def __init__(self):
+    def __init__(self, graph, project_name: str, internet_search: bool):
         self.client = Client()
         self.logger = logger.setup_logger(name='StreamProcessor', level="WARNING")
+        self.project_name = project_name
+        self.internet_search = internet_search
+        self.graph = graph
 
-    async def process_stream(self, graph, question, messages):
+    async def process_stream(self, messages):
         """
         Asynchronously processes the stream of events from the given graph for the provided question.
 
@@ -48,9 +51,13 @@ class StreamProcessor:
         client  = Client()
         current_langgraph_node = []
 
+        config = {"configurable": {
+            "project_name": self.project_name,
+            "internet_search": self.internet_search
+        }}
+
         
-        async for event in graph.astream_events({"question": question, "messages": messages}, version="v1"):
-            run_id = event['run_id']
+        async for event in self.graph.astream_events({"messages": messages}, version="v1", config=config):
             kind = event["event"]
             if "langgraph_node" in event["metadata"]:
                 if event["metadata"]["langgraph_node"] not in current_langgraph_node:
@@ -65,8 +72,7 @@ class StreamProcessor:
                         }
 
             if kind == "on_chat_model_stream":
-                if  event["metadata"]["langgraph_node"] == "response":
-                    run_id  = event["run_id"]
+                if  event["metadata"]["langgraph_node"] in ["llm_answer", "rag_answer"]:
                     yield {
                         "type":"stream",
                         "model_provider": event["metadata"]["ls_provider"],

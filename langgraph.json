@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "default_flow": "./src/vectrix/graphs/graph.py:default_graph"
+  },
+  "env": ".env.docker"
+}

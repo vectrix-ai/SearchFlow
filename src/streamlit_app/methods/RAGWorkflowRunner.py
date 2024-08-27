@@ -1,7 +1,7 @@
 import asyncio
 from langchain_core.messages import HumanMessage, AIMessage
-from vectrix.graphs.vectrix_advanced import Graph
-from vectrix.graphs.checkpointer import PostgresSaver
+from vectrix.graphs import default_graph
+#from vectrix.graphs.checkpointer import PostgresSaver
 from vectrix.streaming.processor import StreamProcessor
 import streamlit as st
 
@@ -18,18 +18,15 @@ class RAGWorkflowRunner:
     async def run(self, prompt: str, status_callback: callable):
          # Reset references at the start of each run
         try:
-            checkpointer = PostgresSaver()
+            #checkpointer = PostgresSaver()
             st.session_state.logger.warning("Creating graph for project %s", st.session_state['project'])
-
-            graph = Graph(project=st.session_state['project'], search_internet=st.session_state.search_internet_toggle)
-            graph = graph.create_graph()
-
             input_message = HumanMessage(content=prompt)
             self.references = []
 
-            stream_processor = StreamProcessor()
+            stream = StreamProcessor(graph=default_graph, project_name=st.session_state['project'], internet_search=st.session_state.search_internet_toggle)
+
             
-            async for event in stream_processor.process_stream(graph, input_message, st.session_state["messages"]):
+            async for event in stream.process_stream(messages=st.session_state["messages"]):
                 self.run_id = event['run_id']
                 if event['type'] == 'stream':
                     yield event['data']
