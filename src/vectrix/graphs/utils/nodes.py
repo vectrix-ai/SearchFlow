@@ -165,6 +165,9 @@ async def transform_docs(state: OverallState, config):
 
 
     documents = state["documents"]
+    if len(documents) == 0:
+        return {"documents": []}
+    
     filtered_docs = _filter_duplicate_docs(documents)
 
     state['documents'].clear()
@@ -193,7 +196,8 @@ async def cite_sources(state: OverallState, config):
         sources = ""
 
         if len(state["documents"]) == 0:
-            self.logger.error('Unable to answer, no sources found')
+            logger.error('Unable to answer, no sources found')
+            return {"cited_sources": ""}
         
         for i, doc in enumerate(state["documents"], 1):
             sources += f"{i}. {doc.page_content}\n\nURL: {doc.metadata['url']}\n SOURCE: {doc.metadata['source_type']}\n"
