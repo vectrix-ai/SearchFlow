@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint
 from datetime import datetime
 import pytz
 from sqlalchemy.ext.declarative import declarative_base
@@ -35,23 +35,18 @@ class Tables:
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
 
-    class LinksToConfirm(Base):
-        __tablename__ = 'links_to_index'
+    class IndexedLinks(Base):
+        __tablename__ = 'indexed_links'
         id = Column(Integer, primary_key=True)
         url = Column(String(255), nullable=False)
         base_url = Column(String(255), nullable=False)
-        project_name = Column(String(255), nullable=False)
-        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
-        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
-
-    class ScrapeStatus(Base):
-        __tablename__ = 'scrape_status'
-        id = Column(Integer, primary_key=True)
-        base_url = Column(String(255), nullable=True)
         status = Column(String(255), nullable=False)
         project_name = Column(String(255), nullable=False)
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
+        __table_args__ = (
+            UniqueConstraint('url', 'project_name', name='uq_url_project'),
+        )
 
     class UploadedFiles(Base):
         __tablename__ = 'uploaded_files'

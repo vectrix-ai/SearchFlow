@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import List, Annotated
 from vectrix import logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, func
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -90,7 +90,8 @@ class DB:
     
     def list_scraped_urls(self) -> List[str]:
         """
-        List all scraped URLs in the database.
+        List all vectorized documents in the database.
+        - FUNCTION NAME SHOULD BE UPDATED TO LIST_INDEXED_DATA
         """
         session = self.Session()
         query = text("""
@@ -238,8 +239,7 @@ class DB:
                 files = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).all()
                 for file in files:
                     self.supabase.storage.from_(project_name).remove([file.url])
-                session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).delete()
-                session.query(self.tables.ScrapeStatus).filter_by(project_name=project_name).delete()
+                session.query(self.tables.IndexedLinks).filter_by(project_name=project_name).delete()
                 session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).delete()
                 session.commit()
                 vectorstore = PGVector(
@@ -489,51 +489,8 @@ class DB:
             return [{"name": key.name, "key": key.key} for key in keys]
         finally:
             session.close()
-
-    def set_scrape_status(
-        self,
-
-        project_name: str,
-        status: str,
-        base_url = None
-    ):
-        """
-        Set or update the scrape status for a given base URL and project name.
-        """
-        session = self.Session()
-        self.logger.info(f"Setting/updating scrape status for project: {project_name}")
-        try:
-            # Try to get an existing status
-            existing_status = session.query(self.tables.ScrapeStatus).filter_by(
-                project_name=project_name
-            ).first()
-
-            if existing_status:
-                # Update existing status
-                existing_status.status = status
-                self.logger.info(f"Updated existing status for base URL: {base_url}")
-                result_id = existing_status.id
-            else:
-                # Create new status
-                new_status = self.tables.ScrapeStatus(
-                    base_url=base_url,
-                    status=status,
-                    project_name=project_name
-                )
-                session.add(new_status)
-                self.logger.info(f"Created new status for base URL: {base_url}")
-                result_id = new_status.id
-
-            session.commit()
-            print(f"Set/updated scrape status for base URL: {base_url}")
-            return result_id
-        except Exception as e:
-            session.rollback()
-            self.logger.error(f"Error setting/updating scrape status: {e}")
-        finally:
-            session.close()
         
-    def add_links_to_confirm(self, links: List[str], base_url : str, project_name: str):
+    def add_links_to_index(self, status :str, links: List[str], base_url : str, project_name: str):
         '''
         Add a list of links to the database
         '''
@@ -541,7 +498,7 @@ class DB:
         self.logger.info(f"Adding links to confirm for base URL: {base_url}")
         try:
             for link in links:
-                new_link = self.tables.LinksToConfirm(url=link, base_url=base_url, project_name=project_name)
+                new_link = self.tables.IndexedLinks(url=link, status=status ,base_url=base_url, project_name=project_name)
                 session.add(new_link)
             session.commit()
             print(f"Added links to confirm for base URL: {base_url}")
@@ -551,33 +508,44 @@ class DB:
         finally:
             session.close()
 
-    def remove_uploaded_links(self, project_name: str):
+    def remove_indexed_link(self, url: str, project_name: str):
         '''
-        Remove all uploaded links from the database
+        Remove an indexed link from the database
         '''
         session = self.Session()
-        self.logger.info(f"Removing uploaded links for project name: {project_name}")
         try:
-            session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).delete()
+            session.query(self.tables.IndexedLinks).filter_by(url=url, project_name=project_name).delete()
             session.commit()
-            print(f"Removed uploaded links for base URL: {project_name}")
+            self.logger.info(f"Removed indexed link: {url}")
         except Exception as e:
             session.rollback()
-            self.logger.error(f"Error removing uploaded links: {e}")
+            self.logger.error(f"Error removing indexed link: {e}")
         finally:
             session.close()
+            
 
-    def get_scrape_status(self, project_name: str) -> List[dict] | None:
+    def get_indexing_status(self, project_name: str) -> List[dict] | None:
         '''
-        Get the scrape status of all links for a project
+        Get the scrape status of all links for a project, grouped by project_name and status
         '''
         session = self.Session()
         self.logger.info(f"Getting scrape status for project: {project_name}")
         try:
-            status = session.query(self.tables.ScrapeStatus).filter_by(project_name=project_name).all()
-            return [{"base_url": s.base_url, "status": s.status, "last_update": s.update_date} for s in status]
+            status = session.query(
+                self.tables.IndexedLinks.project_name,
+                self.tables.IndexedLinks.status,
+                self.tables.IndexedLinks.base_url,
+                func.max(self.tables.IndexedLinks.update_date).label('last_update')
+            ).filter_by(project_name=project_name
+            ).group_by(
+                self.tables.IndexedLinks.project_name,
+                self.tables.IndexedLinks.status,
+                self.tables.IndexedLinks.base_url
+            ).all()
+            return [{"project_name": s.project_name, "status": s.status, "base_url": s.base_url, "last_update": s.last_update} for s in status]
         except Exception as e:
             self.logger.error(f"Error getting scrape status: {e}")
+            return None
         finally:
             session.close()
 
@@ -588,10 +556,25 @@ class DB:
         session = self.Session()
         self.logger.info(f"Getting links to confirm for project: {project_name}")
         try:
-            links = session.query(self.tables.LinksToConfirm).filter_by(project_name=project_name).all()
+            links = session.query(self.tables.IndexedLinks).filter_by(project_name=project_name, status="Confirm page import").all()
             return [{"url": l.url, "base_url": l.base_url} for l in links]
         except Exception as e:
             self.logger.error(f"Error getting links to confirm: {e}")
+        finally:
+            session.close()
+
+    def update_indexed_link_status(self, url: str, project_name: str, status: str):
+        '''
+        Update the status of an indexed link
+        '''
+        session = self.Session()
+        try:
+            session.query(self.tables.IndexedLinks).filter_by(url=url, project_name=project_name).update({"status": status})
+            session.commit()
+            self.logger.debug(f"Updated indexed link status: {url}")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error updating indexed link status: {e}")
         finally:
             session.close()
 

@@ -26,7 +26,7 @@ class WebScraper:
         self.project_name = project_name
 
 
-    def get_all_links(self, base_url: str, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> List[str]:
+    def get_all_links(self, base_url: str, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> None:
         '''
         Scrapes a website and returns a list of all discovered links.
 
@@ -46,7 +46,7 @@ class WebScraper:
         Note:
             This function logs the number of links at the start and end of the crawling process.
         '''
-        self.db.set_scrape_status(base_url=base_url, status="Scraping links", project_name=self.project_name)
+        self.db.add_links_to_index(base_url=base_url, links=[base_url], project_name=self.project_name, status="To be indexed")
         to_visit, known_links = focused_crawler(base_url, max_seen_urls=1, config=self.my_config)
         self.logger.info("Starting to scrape %s links", len(known_links))
         to_visit, known_links = focused_crawler(base_url,
@@ -56,9 +56,11 @@ class WebScraper:
                                                 known_links=known_links,
                                                 config=self.my_config)
         self.logger.info("Finished scraping %s links", len(known_links))
-        self.db.add_links_to_confirm(links=known_links, project_name=self.project_name, base_url=base_url)
-        self.db.set_scrape_status(base_url=base_url, status="Confirm page import", project_name=self.project_name)
-        return known_links
+        self.db.remove_indexed_link(url=base_url, project_name=self.project_name)
+        # Remove the base url from the list of links to be indexed
+        known_links = [link for link in known_links if link != base_url]
+        self.db.add_links_to_index(base_url=base_url, links=known_links, project_name=self.project_name, status="Confirm page import")
+        return None
     
     @staticmethod
     def extract_domain(url):
@@ -72,16 +74,17 @@ class WebScraper:
         Downloads all pages from a URL and stores
         """
         already_downloaded = self.db.list_scraped_urls()
+        print(f"Already downloaded {len(already_downloaded)}")
 
         if already_downloaded:
             to_download = [url for url in urls if url not in already_downloaded]
         else:
             to_download = urls
 
-        to_download = add_to_compressed_dict(to_download)
+        print(f"To download {to_download}")
 
-        self.db.set_scrape_status(status="Importing pages", project_name=project_name)
-        self.db.remove_uploaded_links(project_name=project_name)
+        to_download = add_to_compressed_dict(to_download)
+        
 
         while to_download.done is False:
             bufferlist, url_store = load_download_buffer(url_store=to_download, sleep_time=0)
@@ -99,10 +102,12 @@ class WebScraper:
                             "source_format": "html"
                         }
                     )
-
                     chunked_docs = chunk_content([doc])
                     self.db.add_documents(chunked_docs, project_name=project_name)
-        self.db.set_scrape_status(status="Website indexed", project_name=project_name)
+                    self.db.update_indexed_link_status(url=url, project_name=project_name, status="Indexed")
+                else:
+                    print(f"No page found for {url}")
+                    self.db.remove_by_url(url=url, project_name=project_name)
         return None
 
 

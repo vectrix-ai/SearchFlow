@@ -26,7 +26,7 @@ with col1:
     
 
 st.subheader('Scrape job status')
-scrape_job_status = pd.DataFrame(st.session_state.db.get_scrape_status(project_name=st.session_state.project))
+scrape_job_status = pd.DataFrame(st.session_state.db.get_indexing_status(project_name=st.session_state.project))
 if len(scrape_job_status) > 0:
     st.dataframe(scrape_job_status, hide_index=True)
 else:
@@ -41,11 +41,11 @@ webscraper = WebScraper(project_name=st.session_state.project)
 def import_webpage():
     url = st.text_input("URL")
     if st.button("Import"):
-        webscraper.download_pages(urls=[url], project_name=st.session_state.project)
-        st.success("Webpage imported successfully")
+        st.session_state.db.add_links_to_index(links=[url], project_name=st.session_state.project, base_url=url, status="Confirm page import")
+        st.success("Webpage added to import queue")
         st.rerun()
 
-if st.button("Import a webpage"):
+if st.button("Add a page to import queue"):
     import_webpage()
 
 
