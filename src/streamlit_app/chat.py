@@ -101,7 +101,9 @@ with chat_col:
                 
                 # Update the status: add the Langsmith Run URL and update to "Process complete"
                 langsmith_url = st.session_state.rag_runner.get_trace_url()
+                langsmith_id = st.session_state.rag_runner.get_trace_id()
                 st.caption(f"[Langsmith trace]({langsmith_url})")
+                st.caption(f"Trace ID: {langsmith_id}")
                 status.update(label="Process complete!", state="complete", expanded=False)
 
             selected = st.feedback("thumbs")

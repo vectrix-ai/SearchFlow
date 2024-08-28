@@ -112,5 +112,6 @@ class StreamProcessor:
                             "run_id" : event["run_id"],
                             "graph_node" : event["metadata"]["langgraph_node"],
                             "data": data,
+                            "trace_id": event["run_id"],
                             "trace_url": run_url
                             }

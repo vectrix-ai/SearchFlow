@@ -14,6 +14,7 @@ class RAGWorkflowRunner:
         self.final_output = {}
         self.trace_url = ""
         self.project = project
+        self.trace_id = ""
 
     async def run(self, prompt: str, status_callback: callable):
          # Reset references at the start of each run
@@ -37,6 +38,7 @@ class RAGWorkflowRunner:
                 if event['type'] == 'final_output':
                     self.final_output = event['data']
                     self.trace_url = event['trace_url']
+                    self.trace_id = event['trace_id']
 
         except Exception as e:
             raise RuntimeError(f"An error occurred: {str(e)}")
@@ -48,3 +50,6 @@ class RAGWorkflowRunner:
     
     def get_trace_url(self):
         return self.trace_url
+    
+    def get_trace_id(self):
+        return self.trace_id
