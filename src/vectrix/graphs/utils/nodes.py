@@ -119,12 +119,15 @@ async def retrieve(state: QuestionState, config):
             except:
                 print(doc)
 
-    logger.info(f"Retrieved {len(documents)} documents")
+    # Docs scored above 0.5 ? (boolean)
+    docs_above_threshold = [doc for doc in documents if doc.metadata.get('score', 0) > 0.5]
+
+    logger.info(f"Retrieved {len(documents)} documents from vector search")
 
     internet_search = config.get('configurable', {}).get('internet_search', False)
 
     # Search the internet if asked
-    if internet_search:
+    if internet_search and len(docs_above_threshold) == 0:
         web_search_tool = TavilySearchResults()
         docs = await web_search_tool.ainvoke({"query": question}, max_results=3)
         logger.info(f"Web search returned {len(docs)} documents")
