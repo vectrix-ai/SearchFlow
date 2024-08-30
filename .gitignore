@@ -159,3 +159,6 @@ examples/importers/o365_token.txt
 examples/importers/o365_token.txt
 .sesskey
 .env.docker
+# SSL/TLS certificate files
+*.pem
+*.key
