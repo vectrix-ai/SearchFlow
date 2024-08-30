@@ -6111,6 +6111,19 @@ files = [
 ]
 
 [[package]]
+name = "spider-client"
+version = "0.0.69"
+description = "Python SDK for Spider Cloud API"
+optional = false
+python-versions = "*"
+files = [
+    {file = "spider-client-0.0.69.tar.gz", hash = "sha256:cd96ab888d53c65cd9b954dce34dad8b0ddf716f2b32d8ea66cac9c32b3eee55"},
+]
+
+[package.dependencies]
+requests = "*"
+
+[[package]]
 name = "sqlalchemy"
 version = "2.0.31"
 description = "Database Abstraction Library"
@@ -7723,4 +7736,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.13"
-content-hash = "0f0201509fb03d25ad83c859d931b411a968416e45538d85b583fe94a0150ba7"
+content-hash = "6ea52ea8d627567660b284c508076ee02c08f36866cc9dd191361cc08fb9e706"

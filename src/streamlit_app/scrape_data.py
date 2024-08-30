@@ -11,18 +11,17 @@ if "urls" not in st.session_state:
 
 
 st.title("Scrape Data 🔍")
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("Scrape website")
-    url = st.text_input("Enter website URL")
-    if st.button("Submit"):
-        try:
-            st.success("Scraping job submitted")
-            scraper = WebScraper(project_name=st.session_state.project)
-            scraper.get_all_links(base_url=url)
-            
-        except Exception as e:
-            st.error(f"Error: {e}")
+st.subheader("Detect links")
+st.info("Detect all links in a website and add them to the import queue.")
+url = st.text_input("Enter website URL")
+if st.button("Submit"):
+    try:
+        st.success("Scraping job submitted")
+        scraper = WebScraper(project_name=st.session_state.project)
+        scraper.get_all_links(base_url=url)
+        
+    except Exception as e:
+        st.error(f"Error: {e}")
     
 
 st.subheader('Scrape job status')
@@ -68,3 +67,19 @@ if len(links_to_confirm) > 0:
         webscraper.download_pages(urls=selected_links, project_name=st.session_state.project)
 else:
     st.warning("No links to confirm")
+
+st.subheader('Full Site Import')
+st.info("""
+        We use an external crawler to index the full website at once.\n
+        Please be carefull with the max pages setting.""")
+url = st.text_input("URL")
+max_pages = st.number_input("Max pages", min_value=1, max_value=3000, value=100)
+
+if st.button("Submit", key="full_import_submit"):
+    with st.spinner('Importing full site'):
+        try:
+            webscraper.full_import(url=url, max_pages=int(max_pages))
+            st.success("Full site import submitted")
+        except Exception as e:
+            st.error(f"Error: {e}")
+

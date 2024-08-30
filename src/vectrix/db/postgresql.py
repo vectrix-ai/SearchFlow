@@ -34,7 +34,7 @@ class DB:
         get_all_prompts: Retrieve all prompts from the database
     """
     def __init__(self):
-        self.logger = logger.setup_logger(name="DB", level="INFO")
+        self.logger = logger.setup_logger(name="DB", level="WARNING")
         self.embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
         self.db_name = os.getenv('DB_NAME')
         self.db_user = os.getenv('DB_USER')
@@ -501,7 +501,6 @@ class DB:
                 new_link = self.tables.IndexedLinks(url=link, status=status ,base_url=base_url, project_name=project_name)
                 session.add(new_link)
             session.commit()
-            print(f"Added links to confirm for base URL: {base_url}")
         except Exception as e:
             session.rollback()
             self.logger.error(f"Error adding links to confirm: {e}")

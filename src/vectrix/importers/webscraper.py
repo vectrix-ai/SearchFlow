@@ -9,16 +9,20 @@ from trafilatura.settings import DEFAULT_CONFIG
 from trafilatura import extract
 from trafilatura.downloads import add_to_compressed_dict, load_download_buffer, buffered_downloads
 from langchain_core.documents import Document
+from langchain_community.document_loaders import SpiderLoader
 from vectrix import logger
 from vectrix.db import DB
 from vectrix.importers.chunkdata import chunk_content
+from courlan import fix_relative_urls
+
+
 
 class WebScraper:
     '''
     This class uses trafilatura as a web scraper
     '''
     def __init__(self, project_name: str):
-        self.logger = logger.setup_logger(name="WebScraper", level="ERROR")
+        self.logger = logger.setup_logger(name="WebScraper", level="WARNING")
         self.my_config = deepcopy(DEFAULT_CONFIG)
         self.my_config['DEFAULT']['SLEEP_TIME'] = '1'
         self.db = DB()
@@ -46,6 +50,9 @@ class WebScraper:
         Note:
             This function logs the number of links at the start and end of the crawling process.
         '''
+
+
+        # Add the base url to the list of links to be indexed
         self.db.add_links_to_index(base_url=base_url, links=[base_url], project_name=self.project_name, status="To be indexed")
         to_visit, known_links = focused_crawler(base_url, max_seen_urls=1, config=self.my_config)
         self.logger.info("Starting to scrape %s links", len(known_links))
@@ -54,12 +61,18 @@ class WebScraper:
                                                 max_known_urls=max_known_urls,
                                                 todo=to_visit,
                                                 known_links=known_links,
-                                                config=self.my_config)
+                                                config=self.my_config,
+                                                )
         self.logger.info("Finished scraping %s links", len(known_links))
         self.db.remove_indexed_link(url=base_url, project_name=self.project_name)
+
+
+        # Fix relative URLs
+        fixed_links = [fix_relative_urls(base_url, link) for link in known_links]
+
         # Remove the base url from the list of links to be indexed
-        known_links = [link for link in known_links if link != base_url]
-        self.db.add_links_to_index(base_url=base_url, links=known_links, project_name=self.project_name, status="Confirm page import")
+        fixed_links = [link for link in fixed_links if link != base_url]
+        self.db.add_links_to_index(base_url=base_url, links=fixed_links, project_name=self.project_name, status="Confirm page import")
         return None
     
     @staticmethod
@@ -102,12 +115,52 @@ class WebScraper:
                             "source_format": "html"
                         }
                     )
-                    chunked_docs = chunk_content([doc])
-                    self.db.add_documents(chunked_docs, project_name=project_name)
+                    try:
+                        chunked_docs = chunk_content([doc])
+                        self.db.add_documents(chunked_docs, project_name=project_name)
+                    except Exception as e:
+                        continue
                     self.db.update_indexed_link_status(url=url, project_name=project_name, status="Indexed")
                 else:
-                    print(f"No page found for {url}")
+                    self.logger.error(f"No page found for {url}")
                     self.db.remove_by_url(url=url, project_name=project_name)
         return None
+
+    def full_import(self, url: str, max_pages: int):
+        '''
+        Using the Spider API we will scrape the full site and store them as a list of documents in the vector store.
+        Note that is is a paid feature and an API key is needed as environment variable (SPIDER_API_KEY)
+
+        args:
+            url: The base URL to scrape
+            max_pages: The maximum number of pages to scrape
+        '''    
+        self.logger.info("Starting full import for %s", url)
+        loader = SpiderLoader(
+            url=url,
+            mode="crawl",
+            params={'limit': max_pages, 'metadata': True}
+        )
+        data = loader.load()
+
+        if data:
+            for doc in data:
+                try:
+                    doc.page_content = extract(doc.page_content)
+                    doc.metadata['source_type'] = 'webpage'
+                    doc.metadata['source_format'] = 'html'
+                    doc.metadata['url'] = doc.metadata['domain'] + doc.metadata['pathname']
+                    doc.metadata['language'] = "" # TO BE ADDED
+
+                    chunked_docs = chunk_content([doc])
+                    self.db.add_documents(chunked_docs, project_name=self.project_name)
+                    self.db.add_links_to_index(base_url=url, links=[doc.metadata['url']], project_name=self.project_name, status="Indexed")
+                except:
+                    continue
+        else:
+            self.logger.error("No data found for %s", url)
+
+
+        
 
 
