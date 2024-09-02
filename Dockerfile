@@ -8,7 +8,7 @@ WORKDIR /app
 RUN sudo apt-get update && sudo apt-get install -y libmagic-dev tesseract-ocr libgl1
 
 # Install the required python packages
-RUN pip install --no-cache-dir vectrix
+RUN pip install --no-cache-dir searchflow
 
 # Copy the project files into the container
 COPY src/ ./src/
