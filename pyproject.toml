@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "searchflow"
-version = "0.0.76"
+version = "0.0.77"
 description = "An assistant helping you to index webpages into structured datasets."
 authors = ["Ben Selleslagh <ben@vectrix.ai>"]
 license = "MIT"
