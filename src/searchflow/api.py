@@ -4,8 +4,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from vectrix.db import DB
-from vectrix import importers, logger
+from searchflow.db import DB
+from searchflow import importers, logger
 
 db = DB()
 

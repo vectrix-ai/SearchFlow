@@ -12,8 +12,8 @@ from langgraph.constants import Send
 from langchain.schema import Document
 from langchain.output_parsers.openai_tools import PydanticToolsParser
 from langchain_community.tools.tavily_search import TavilySearchResults
-from vectrix.db import DB
-from vectrix import logger
+from searchflow.db import DB
+from searchflow import logger
 
 class QuestionList(BaseModel):
     questions: List[str] = Field(

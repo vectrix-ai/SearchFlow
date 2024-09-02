@@ -2,7 +2,7 @@ import uuid
 import os
 import streamlit as st
 import pandas as pd
-from vectrix.importers import Files
+from searchflow.importers import Files
 
 files = Files()
 

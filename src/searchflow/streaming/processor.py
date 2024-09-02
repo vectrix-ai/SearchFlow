@@ -1,6 +1,6 @@
 from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
-from vectrix import logger
+from searchflow import logger
 
 
 class StreamProcessor:

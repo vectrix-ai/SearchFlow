@@ -3,7 +3,7 @@ import shutil
 import logging
 from typing import List
 from O365 import Account, FileSystemTokenBackend
-from vectrix.models.documents import FileObject
+from searchflow.models.documents import FileObject
 
 class OneDrive:
     '''

@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 import streamlit as st
-from vectrix.db import DB
-from vectrix import logger
+from searchflow.db import DB
+from searchflow import logger
 
 from importlib.metadata import version, PackageNotFoundError
 
@@ -42,7 +42,7 @@ def select_project():
     if st.sidebar.button('Refresh Sources 🔁'):
         st.rerun()
         
-    st.sidebar.text(f"App version {get_package_version("vectrix")}")
+    st.sidebar.text(f"App version {get_package_version("searchflow")}")
     return project
 
 st.logo("src/streamlit_app/assets/logo_small.png", link="https://vectrix.ai")

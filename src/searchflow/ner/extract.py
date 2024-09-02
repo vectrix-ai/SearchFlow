@@ -1,5 +1,5 @@
-from vectrix.llm.llm import LLM
-from vectrix.ner.models.entities import NERExtraction
+from searchflow.llm.llm import LLM
+from searchflow.ner.models.entities import NERExtraction
 
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate

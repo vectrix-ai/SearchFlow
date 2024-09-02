@@ -1,8 +1,8 @@
 import asyncio
 from langchain_core.messages import HumanMessage, AIMessage
-from vectrix.graphs import default_graph
+from searchflow.graphs import default_graph
 #from vectrix.graphs.checkpointer import PostgresSaver
-from vectrix.streaming.processor import StreamProcessor
+from searchflow.streaming.processor import StreamProcessor
 import streamlit as st
 
 

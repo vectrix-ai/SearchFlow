@@ -10,10 +10,9 @@ from trafilatura import extract
 from trafilatura.downloads import add_to_compressed_dict, load_download_buffer, buffered_downloads
 from langchain_core.documents import Document
 from langchain_community.document_loaders import SpiderLoader
-from vectrix import logger
-from vectrix.db import DB
-from vectrix.importers.chunkdata import chunk_content
-from courlan import fix_relative_urls
+from searchflow import logger
+from searchflow.db import DB
+from searchflow.importers.chunkdata import chunk_content
 
 
 
@@ -66,13 +65,9 @@ class WebScraper:
         self.logger.info("Finished scraping %s links", len(known_links))
         self.db.remove_indexed_link(url=base_url, project_name=self.project_name)
 
-
-        # Fix relative URLs
-        fixed_links = [fix_relative_urls(base_url, link) for link in known_links]
-
         # Remove the base url from the list of links to be indexed
-        fixed_links = [link for link in fixed_links if link != base_url]
-        self.db.add_links_to_index(base_url=base_url, links=fixed_links, project_name=self.project_name, status="Confirm page import")
+        known_links = [link for link in known_links if link != base_url]
+        self.db.add_links_to_index(base_url=base_url, links=known_links, project_name=self.project_name, status="Confirm page import")
         return None
     
     @staticmethod

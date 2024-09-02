@@ -2,7 +2,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import List, Annotated
-from vectrix import logger
+from searchflow import logger
 from sqlalchemy import create_engine, text, func
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import JSON
@@ -11,7 +11,7 @@ from supabase import create_client, Client
 from langchain_core.documents import Document
 from langchain_cohere import CohereEmbeddings
 from langchain_postgres.vectorstores import PGVector
-from vectrix.db.classes import Tables
+from searchflow.db.classes import Tables
 
 import pytz
 

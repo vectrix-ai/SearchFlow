@@ -9,9 +9,9 @@ from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
 from langchain_community.tools.tavily_search import TavilySearchResults
 from typing import List, Sequence
 from langgraph.constants import Send
-from vectrix import logger
-from vectrix.graphs.utils.state import OverallState, Intent, QuestionList, QuestionState, CitedSources
-from vectrix.db import DB
+from searchflow import logger
+from searchflow.graphs.utils.state import OverallState, Intent, QuestionList, QuestionState, CitedSources
+from searchflow.db import DB
 
 logger = logger.setup_logger(name="LangGraph", level="INFO")
 db = DB()

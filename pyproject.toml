@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "vectrix"
-version = "0.0.75"
+name = "searchflow"
+version = "0.0.76"
 description = "An assistant helping you to index webpages into structured datasets."
-authors = ["Ben Selleslagh <ben@dataframe.be>"]
+authors = ["Ben Selleslagh <ben@vectrix.ai>"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "vectrix", from = "src"},
+    { include = "searchflow", from = "src"},
 ]
 
 [tool.poetry.dependencies]

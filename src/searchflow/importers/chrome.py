@@ -1,8 +1,8 @@
 import json
 from trafilatura import extract
 from langchain_core.documents import Document
-from vectrix.importers import chunk_content
-from vectrix import logger, DB
+from searchflow.importers import chunk_content
+from searchflow import logger, DB
 
 
 class ChromeImporter:

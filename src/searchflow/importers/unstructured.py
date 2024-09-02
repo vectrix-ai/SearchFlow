@@ -4,8 +4,8 @@ import uuid
 import json
 from typing import List
 from langchain_core.documents import Document
-from vectrix import logger
-from vectrix.db import DB
+from searchflow import logger
+from searchflow.db import DB
 
 class Files:
     """

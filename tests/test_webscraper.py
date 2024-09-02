@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from vectrix.importers import WebScraper
-from vectrix.db import DB
+from searchflow.importers import WebScraper
+from searchflow.db import DB
 
 def test_webscraper_real():
     # Create a WebScraper instance with a test project

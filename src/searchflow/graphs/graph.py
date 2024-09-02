@@ -1,7 +1,7 @@
 from typing import TypedDict, Literal
 from langgraph.graph import StateGraph, END
-from vectrix.graphs.utils.state import OverallState
-from vectrix.graphs.utils.nodes import (
+from searchflow.graphs.utils.state import OverallState
+from searchflow.graphs.utils.nodes import (
     detect_intent,
     decide_answering_path,
     llm_answer,
@@ -12,7 +12,7 @@ from vectrix.graphs.utils.nodes import (
     rag_answer,
     cite_sources
 )
-from vectrix import DB
+from searchflow import DB
 
 db = DB()
 projects = db.list_projects()

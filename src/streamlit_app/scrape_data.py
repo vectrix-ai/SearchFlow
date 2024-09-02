@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from vectrix.importers import WebScraper
+from searchflow.importers import WebScraper
 import pandas as pd
 
 if "url" not in st.session_state:

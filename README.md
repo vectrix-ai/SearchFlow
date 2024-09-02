@@ -1,62 +1,70 @@
-# PAGINX
+# SearchFlow
 
-![GitHub License](https://img.shields.io/github/license/vectrix-ai/paginx) ![PyPI - Version](https://img.shields.io/pypi/v/paginx) ![GitHub Tag](https://img.shields.io/github/v/tag/vectrix-ai/paginx)
+SearchFlow is an assistant designed to help you index webpages into structured datasets. It leverages various tools and models to scrape, process, and store web content efficiently.
 
- Paginx is an innovative Python-based project that leverages the power of Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) to provide intelligent question-answering capabilities for any given website. By simply entering a website URL, users can interact with an AI assistant that can answer questions and provide insights based on the content of the website.
+## Features
 
-## Setting Up a PostgreSQL instance with the pgvector Extension
-To store the uploaded data for later retrieval (for example during RAG), you need to set up a PostgreSQL database with the pgvector extension enabled. This chapter guides you through the steps to install PostgreSQL, enable the pgvector extension, create a new database, and store the connection string as a URL. Alternatively, you can use hosted PostgreSQL instances provided by many cloud providers.
+- **Web Scraping**: Uses `trafilatura` for focused crawling and web scraping.
+- **Document Processing**: Supports chunking and processing of various document types.
+- **Database Management**: Manages projects, documents, and prompts using PostgreSQL.
+- **Vector Search**: Utilizes vector search for document retrieval.
+- **LLM Integration**: Integrates with language models for question answering and document grading.
 
-### 1. Install PostgreSQL and pgvector Extension
-**Using Docker**
-1.	Pull the PostgreSQL image with pgvector:
-```sh
-docker pull ankane/pgvector
+## Installation
+
+To set up the development environment, use the provided `Dockerfile` and `.devcontainer/devcontainer.json` for a consistent development setup.
+
+### Prerequisites
+
+- Docker
+- Python 3.11 or higher
+
+### Steps
+
+1. **Clone the repository**:
+    ```sh
+    git clone https://github.com/yourusername/searchflow.git
+    cd searchflow
+    ```
+
+2. **Build the Docker container**:
+    ```sh
+    docker build -t searchflow .
+    ```
+
+3. **Run the Docker container**:
+    ```sh
+    docker run -it -p 8501:8501 searchflow
+    ```
+
+## Usage
+
+### Web Scraping
+
+To scrape a website and index the links:
+
+```python
+from searchflow.importers.webscraper import WebScraper
+scraper = WebScraper(project_name="example_project")
+scraper.get_all_links(base_url="https://example.com")
 ```
 
-2.	Run the PostgreSQL container with the pgvector extension enabled:
-```sh
-docker run -d --name paginx -e POSTGRES_PASSWORD=mysecretpassword -p 5432:5432 -e PG_EXTENSIONS="pgvector" ankane/pgvector
+### Document Processing
+
+To upload and process files:
+
+```python
+from searchflow.importers.file_importer import FileImporter
+files = Files()
+files.upload_file(document_data=[(b"file_content", "example.pdf")], project_name="example_project")
 ```
 
-**Manual Installation**
+### Vector Search
+To perform a similarity search:
 
-If you prefer to install PostgreSQL and pgvector manually, please follow the instructions provided in the official documentation:
-
-- [PostgreSQL Installation](https://www.postgresql.org/download/)
-- [pgvector Installation](https://github.com/ankane/pgvector)
-
-### 2. Create a New Database
-Once you have PostgreSQL running with pgvector enabled, you need to create a new database for our application. You can do this by connecting to your PostgreSQL instance and executing the following SQL commands
-
-
-Create a new database named `paginx` (you can choose a different name if you prefer):
-```sql
-CREATE DATABASE paginx;
+```python
+from searchflow.db.postgresql import DB
+db = DB()
+results = db.similarity_search(project_name="example_project", query="example query"
 ```
-
-Connect to the `paginx` database:
-```sql
-\c paginx;
-```
-
-Enable the pgvector extension for the `paginx` database:
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-### 3. Store the Connection String
-After creating the database, you need to store the connection string as an enviroment variable named ```database_url```. This connection string will be used by paginx to connect to the database.
-
-
-The envrioment variable can be set using the following command:
-```sh
-export database_url="postgresql://postgres:mysecretpassword@localhost/paginx"
-```
-
-### 4. Using a Hosted PostgreSQL Instance
-If you prefer to use a hosted PostgreSQL instance, you can create a new database and store the connection string as a URL. Make sure to enable the pgvector extension for the hosted database.
-
-
-
 
