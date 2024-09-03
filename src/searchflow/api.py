@@ -69,7 +69,7 @@ if __name__ == "__main__":
     import uvicorn
     if os.getenv('env') == 'localhost':
         uvicorn.run(
-        "vectrix.api:app",
+        "searchflow.api:app",
         host="0.0.0.0", 
         port=8000,
         ssl_keyfile='localhost-key.pem',

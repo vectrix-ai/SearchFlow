@@ -1,8 +1,8 @@
 import json
 from trafilatura import extract
 from langchain_core.documents import Document
-from searchflow.importers import chunk_content
 from searchflow import logger, DB
+#from searchflow.importers import ExtractionObject, ExtractMetaData
 
 
 class ChromeImporter:
@@ -32,8 +32,7 @@ class ChromeImporter:
         )
 
         try:
-            chunked_docs = chunk_content([document])
-            self.db.add_documents(chunked_docs, project_name=self.project_name)
+            self.db.add_documents([document], project_name=self.project_name)
         except Exception as e:
             self.logging.error(f"Error adding document to database: {e}")
 

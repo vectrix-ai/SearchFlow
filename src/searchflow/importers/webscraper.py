@@ -12,7 +12,7 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import SpiderLoader
 from searchflow import logger
 from searchflow.db import DB
-from searchflow.importers.chunkdata import chunk_content
+from searchflow.importers.extraction import ExtractMetaData, ExtractionObject
 
 
 
@@ -20,13 +20,14 @@ class WebScraper:
     '''
     This class uses trafilatura as a web scraper
     '''
-    def __init__(self, project_name: str):
+    def __init__(self, project_name: str, db: DB):
         self.logger = logger.setup_logger(name="WebScraper", level="WARNING")
         self.my_config = deepcopy(DEFAULT_CONFIG)
         self.my_config['DEFAULT']['SLEEP_TIME'] = '1'
-        self.db = DB()
+        self.db = db
         self.downoad_threads = 10
         self.project_name = project_name
+        self.extractor = ExtractMetaData()
 
 
     def get_all_links(self, base_url: str, max_seen_urls: int = 1000, max_known_urls: int = 100000) -> None:
@@ -92,6 +93,8 @@ class WebScraper:
         print(f"To download {to_download}")
 
         to_download = add_to_compressed_dict(to_download)
+
+        downloaded_objects = []
         
 
         while to_download.done is False:
@@ -100,25 +103,28 @@ class WebScraper:
                 downloaded_page = extract(result, output_format='json', include_links=True, with_metadata=True, config=self.my_config)
                 if downloaded_page:
                     downloaded_page = json.loads(downloaded_page)
-                    doc = Document(
-                        page_content=downloaded_page['raw_text'],
-                        metadata={
-                            "title": downloaded_page['title'],
-                            "url": url,
-                            "language": downloaded_page['language'],
-                            "source_type": "webpage",
-                            "source_format": "html"
-                        }
-                    )
-                    try:
-                        chunked_docs = chunk_content([doc])
-                        self.db.add_documents(chunked_docs, project_name=project_name)
-                    except Exception as e:
-                        continue
-                    self.db.update_indexed_link_status(url=url, project_name=project_name, status="Indexed")
+                    downloaded_objects.append(ExtractionObject(
+                        title=downloaded_page['title'],
+                        content=downloaded_page['raw_text'],
+                        url=url,
+                        project_name=project_name,
+                        file_type="webpage",
+                        source="webpage",
+                    ))
                 else:
                     self.logger.error(f"No page found for {url}")
                     self.db.remove_by_url(url=url, project_name=project_name)
+                    
+        downloaded_pages = self.extractor.extract(downloaded_objects)
+
+        try:
+            self.db.add_documents(downloaded_pages, project_name=project_name)
+            for url in urls:
+                self.db.update_indexed_link_status(url=url, project_name=project_name, status="Indexed")
+        except Exception as e:
+            self.logger.error(f"Error adding documents: {e}")
+            return False
+
         return None
 
     def full_import(self, url: str, max_pages: int):
@@ -136,22 +142,29 @@ class WebScraper:
             mode="crawl",
             params={'limit': max_pages, 'metadata': True}
         )
+        print("Starting to load")
         data = loader.load()
+
+        pages = []
 
         if data:
             for doc in data:
-                try:
-                    doc.page_content = extract(doc.page_content)
-                    doc.metadata['source_type'] = 'webpage'
-                    doc.metadata['source_format'] = 'html'
-                    doc.metadata['url'] = doc.metadata['domain'] + doc.metadata['pathname']
-                    doc.metadata['language'] = "" # TO BE ADDED
-
-                    chunked_docs = chunk_content([doc])
-                    self.db.add_documents(chunked_docs, project_name=self.project_name)
-                    self.db.add_links_to_index(base_url=url, links=[doc.metadata['url']], project_name=self.project_name, status="Indexed")
-                except:
-                    continue
+                pages.append(
+                    ExtractionObject(
+                        title=doc.metadata['title'],
+                        content=doc.page_content,
+                        url=doc.metadata['url'],
+                        project_name=self.project_name,
+                        file_type="webpage",
+                        source="webpage",
+                    )
+                )
+            try:
+                pages = self.extractor.extract(pages)
+                self.db.add_documents(pages, project_name=self.project_name)
+                self.db.add_links_to_index(base_url=url, links=[doc.metadata['url']], project_name=self.project_name, status="Indexed")
+            except:
+                self.logger.error("Error extracting metadata for %s", url)
         else:
             self.logger.error("No data found for %s", url)
 

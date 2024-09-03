@@ -7,8 +7,8 @@ from searchflow.db import DB
 def test_webscraper_real():
     # Create a WebScraper instance with a test project
     project_name = "unit_tests"
-    scraper = WebScraper(project_name=project_name)
     db = DB()
+    scraper = WebScraper(project_name=project_name, db=db)
 
     try:
         # Create a project

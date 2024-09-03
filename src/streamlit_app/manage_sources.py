@@ -18,9 +18,9 @@ else:
     st.subheader("Statistics 📊")
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Documents", len(SOURCES_DF))
-    col2.metric("Total Sources", SOURCES_DF['source_type'].nunique())
-    col3.metric("Amount of formats", SOURCES_DF['source_format'].nunique())
-    st.dataframe(SOURCES_DF[["url", "title", "source_type", "source_format", "language"]], 
+    col2.metric("Total Sources", SOURCES_DF['source'].nunique())
+    col3.metric("Amount of formats", SOURCES_DF['file_type'].nunique())
+    st.dataframe(SOURCES_DF, 
                 column_config={
                             "url" : st.column_config.LinkColumn(),
                         })

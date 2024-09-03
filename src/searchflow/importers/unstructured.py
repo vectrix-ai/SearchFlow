@@ -6,6 +6,7 @@ from typing import List
 from langchain_core.documents import Document
 from searchflow import logger
 from searchflow.db import DB
+from searchflow.importers.extraction import ExtractMetaData, ExtractionObject
 
 class Files:
     """
@@ -17,6 +18,7 @@ class Files:
     def __init__(self):
         self.logger = logger.setup_logger(name='Files', level="INFO")
         self.db = DB()
+        self.extractor = ExtractMetaData()
 
 
     def upload_file(
@@ -66,23 +68,25 @@ class Files:
                 try:
                     # Use partition with file-like object instead of filename
                     elements = partition(file=file_obj)
-                    chunks = chunk_elements(elements, max_characters=chunk_size)
+                    chunks = chunk_elements(elements, max_characters=9999999999)
                     self.logger.info("Chunked the document into %s parts", len(chunks))
+
+                    docs = []
 
                     for chunk in chunks:
                         cleaned_text = re.sub('\x00', '', chunk.text)
-                        doc = Document(
-                            page_content=cleaned_text,
-                            metadata={
-                                "url": storage_url,
-                                "uuid" : str(uuid.uuid4()),
-                                "title": filename,
-                                "language":"",
-                                "source_type": file_type,
-                                "source_format": "uploaded_file"
-                            }
-                            )
-                        self.db.add_documents(project_name=project_name, documents=[doc])
+                        doc = ExtractionObject(
+                            title=filename,
+                            content=cleaned_text,
+                            url=storage_url,
+                            project_name=project_name,
+                            file_type=file_type,
+                            source="uploaded_file",
+                            filename=filename
+                        )
+                        docs.append(doc)
+                    docs = self.extractor.extract(docs)
+                    self.db.add_documents(project_name=project_name, documents=docs)
                         
                 except Exception as e:
                     self.logger.error("Error parsing file %s: %s", filename, e)

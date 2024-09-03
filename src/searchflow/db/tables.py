@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint, Float, ARRAY
 from datetime import datetime
 import pytz
 from sqlalchemy.ext.declarative import declarative_base
@@ -21,8 +21,7 @@ class Tables:
 
     class Project(Base):
         __tablename__ = 'projects'
-        id = Column(Integer, primary_key=True)
-        name = Column(String(255), nullable=False)
+        name = Column(String(255), primary_key=True)
         description = Column(Text, nullable=False)
         creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
         update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
@@ -48,12 +47,28 @@ class Tables:
             UniqueConstraint('url', 'project_name', name='uq_url_project'),
         )
 
-    class UploadedFiles(Base):
-        __tablename__ = 'uploaded_files'
-        id = Column(Integer, primary_key=True)
-        filename = Column(String(255), nullable=False)
-        project_name = Column(String(255), nullable=False)
-        bucket_name = Column(String(255), nullable=False)
-        url = Column(String(255), nullable=False)
-        creation_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
-        update_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC), onupdate=lambda: datetime.now(pytz.UTC))
+    class Documents(Base):
+        __tablename__ = 'document_metadata'
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        title = Column(String(255), nullable=False)
+        author = Column(String(255))
+        file_type = Column(String(50))
+        word_count = Column(Integer)
+        language = Column(String(50))
+        source = Column(String(255))
+        content_type = Column(String(100))
+        tags = Column(ARRAY(String))  # Store as an array of strings
+        summary = Column(Text)
+        url = Column(String(255))
+        project_name = Column(String(255), ForeignKey('projects.name'))
+        indexing_status = Column(String(50))
+        filename = Column(String(255))
+        priority = Column(Integer)
+        read_time = Column(Float)  # in minutes
+        creation_date = Column(DateTime(timezone=True))
+        last_modified_date = Column(DateTime(timezone=True))
+        upload_date = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.UTC))
+        
+        __table_args__ = (
+            UniqueConstraint('url', 'project_name', name='uq_doc_url_project'),
+        )

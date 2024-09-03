@@ -1,56 +1,23 @@
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
+from datetime import datetime, UTC
 
-class VectorDocument(BaseModel):
-    """
-    Data model for storing chunks of text and their metadata.
-    Can be ingested by the Vectordb class.
-    """
+class DocumentMetaData(BaseModel):
     title: str
+    author: Optional[str] = None
+    file_type: Literal["webpage", "pdf", "docx", "txt", "csv", "other"]
+    word_count: int 
+    language: Optional[str] = None
+    source: Literal["webpage", "uploaded_file", "OneDrive", "Notion"]
+    content_type: Optional[str] = None
+    tags: Optional[List[str]] = None
+    summary: Optional[str] = None
     url: str
-    content: str
-    type: str
-    NER: Optional[str] = None
-
-class Documents(BaseModel):
-    """
-    A list of VectorDocument objects.
-    """
-    documents: List[VectorDocument]
-
-
-class FileObject(BaseModel):
-    '''
-    A physical file object that can be processed for chunking and processing.
-    '''
-    file_path: str
-    file_type: str
-    file_name: str
-    url: Optional[str] = None
-
-class WebPageData(BaseModel):
-    '''
-    Content of an extracted webpage.
-    '''
-    content: dict = {
-        "title": Optional[str],
-        "hostname": Optional[str],
-        "date": Optional[str],
-        "fingerprint": Optional[str],
-        "id": Optional[str],
-        "license": Optional[str],
-        "comments": Optional[str],
-        "raw_text": Optional[str],
-        "text": Optional[str],
-        "language": Optional[str],
-        "image": Optional[str],
-        "pagetype": Optional[str],
-        "filedate": Optional[str],
-        "source": Optional[str],
-        "source_hostname": Optional[str],
-        "excerpt": Optional[str],
-        "categories": Optional[str],
-        "tags": Optional[str]
-    }
-    metadata: dict = {}
-    source_hostname: Optional[str] = Field(None, alias='source-hostname')
+    project_name: str
+    indexing_status: Optional[str] = None
+    filename: Optional[str] = None
+    priority: Optional[int] = None
+    read_time: float
+    creation_date: Optional[datetime] = None
+    last_modified_date: Optional[datetime] = None
+    upload_date: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -11,9 +11,36 @@ from supabase import create_client, Client
 from langchain_core.documents import Document
 from langchain_cohere import CohereEmbeddings
 from langchain_postgres.vectorstores import PGVector
-from searchflow.db.classes import Tables
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from searchflow.db.tables import Tables
 import pytz
+
+
+def chunk_content(documents: List[Document], chunk_size: int = 1000, chunk_overlap: int = 0) -> List[Document]:
+    """
+    Chunk the content of the pages into smaller chunks. Will also add UUIDs to the chunks.
+
+    Args:
+        chunk_size (int): The maximum size of each chunk in characters. Defaults to 1000.
+
+    Returns:
+        list: A list of chunks containing the content of the pages.
+    """
+    text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+    model_name="gpt-4",
+    chunk_size=chunk_size,
+    chunk_overlap=chunk_overlap,
+    )
+    
+    metadatas = [doc.metadata for doc in documents]
+    content = [' '.join(doc.page_content.split()) for doc in documents]
+
+    chunks = text_splitter.create_documents(content, metadatas=metadatas)
+
+    for chunk in chunks:
+        chunk.metadata['uuid'] = str(uuid.uuid4())
+        
+    return chunks
 
 
 class DB:
@@ -134,17 +161,21 @@ class DB:
         Get the metadata of a collection
         '''
         query = text(f"""
-            select
-            langchain_pg_embedding.cmetadata as metadata
-            from
-            langchain_pg_embedding
-            join langchain_pg_collection on langchain_pg_embedding.collection_id = langchain_pg_collection.uuid
-            where
-            langchain_pg_collection.name = '{project_name}'
+            SELECT
+                langchain_pg_embedding.cmetadata->>'title' AS title,
+                langchain_pg_embedding.cmetadata->>'source' AS source,
+                langchain_pg_embedding.cmetadata->>'file_type' AS file_type,
+                langchain_pg_embedding.cmetadata->>'url' AS url
+            FROM
+                langchain_pg_embedding
+            JOIN
+                langchain_pg_collection ON langchain_pg_embedding.collection_id = langchain_pg_collection.uuid
+            WHERE
+                langchain_pg_collection.name = '{project_name}'
         """)
         session = self.Session()
         result = session.execute(query)
-        metadata = [row.metadata for row in result]
+        metadata = [row for row in result]
         session.close()
         return metadata
 
@@ -153,16 +184,61 @@ class DB:
         Calculate Vectors for a set of documents and upload them to the database
         '''
 
-        vectorstore = PGVector(
+        session = self.Session()
+
+        # print the URLS of the documents th
+
+        try:
+            for doc in documents:
+                document_metadata = self.tables.Documents(
+                    title=doc.metadata['title'],
+                    author=doc.metadata['author'],
+                    file_type=doc.metadata['file_type'],
+                    word_count=doc.metadata['word_count'],
+                    language=doc.metadata['language'],
+                    source=doc.metadata['source'],
+                    content_type=doc.metadata['content_type'],
+                    tags=doc.metadata['tags'],
+                    summary=doc.metadata['summary'],
+                    url=doc.metadata['url'],
+                    project_name=doc.metadata['project_name'],
+                    indexing_status=doc.metadata['indexing_status'],
+                    priority=doc.metadata['priority'],
+                    read_time=doc.metadata['read_time'],
+                    creation_date=doc.metadata['creation_date'],
+                    last_modified_date=doc.metadata['last_modified_date'],
+                    upload_date=doc.metadata['upload_date'],
+                    filename=doc.metadata['filename']
+                )
+                session.add(document_metadata)
+
+            vectorstore = PGVector(
             embeddings=self.embeddings,
             collection_name=project_name,
             connection=self.engine,
             use_jsonb=True,
         )
+            documents = chunk_content(documents)
 
-        ids = [doc.metadata["uuid"] for doc in documents]
-        result = vectorstore.add_documents(documents, ids=ids)
+            ids = [doc.metadata["uuid"] for doc in documents]
+            # Remove the dates from the metadata
+            for doc in documents:
+                del doc.metadata['creation_date']
+                del doc.metadata['last_modified_date']
+                del doc.metadata['upload_date']
 
+            result = vectorstore.add_documents(documents, ids=ids)
+
+            session.commit()
+
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error adding documents: {e}")
+            return False
+        finally:
+            session.close()
+
+    
     def similarity_search(self, project_name: str, query: str, top_k: int = 3):
         '''
         Search for similar documents in a project
@@ -175,6 +251,10 @@ class DB:
         )
 
         result = vectorstore.similarity_search(query, top_k=top_k)
+
+
+
+
         return result
  
     def create_project(self, name, description):
@@ -196,7 +276,7 @@ class DB:
             existing_project = session.query(self.tables.Project).filter_by(name=name).first()
             if existing_project:
                 self.logger.error(f"Project with name '{name}' already exists. Skipping creation.")
-                return existing_project.id
+                return existing_project.name
 
             new_project = self.tables.Project(name=name, description=description)
             session.add(new_project)
@@ -210,7 +290,7 @@ class DB:
             vectorstore.create_collection()
             self.supabase.storage.create_bucket(name)
             self.logger.info(f"Added new project: {name}")
-            return new_project.id
+            return new_project.name
         
         except Exception as e:
             session.rollback()
@@ -235,12 +315,12 @@ class DB:
         try:
             project = session.query(self.tables.Project).filter_by(name=project_name).first()
             if project:
-                session.delete(project)
-                files = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).all()
+                files = session.query(self.tables.Documents).filter_by(project_name=project_name, source="uploaded_file").all()
                 for file in files:
                     self.supabase.storage.from_(project_name).remove([file.url])
                 session.query(self.tables.IndexedLinks).filter_by(project_name=project_name).delete()
-                session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).delete()
+                session.query(self.tables.Documents).filter_by(project_name=project_name).delete()
+                session.delete(project)
                 session.commit()
                 vectorstore = PGVector(
                     embeddings=self.embeddings,
@@ -603,14 +683,6 @@ class DB:
 
         session = self.Session()
         try:
-            new_file = self.tables.UploadedFiles(
-                filename=filename,
-                project_name=project_name,
-                bucket_name=project_name,
-                url=path_on_supastorage
-            )
-            session.add(new_file)
-
                 # Caluculate MIME type
             if file_extension == "pdf":
                 mime_type = "application/pdf"
@@ -652,7 +724,7 @@ class DB:
         self.logger.info(f"Listing uploaded files for project: {project_name}")
         file_details = []
         try:
-            files = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name).all()
+            files = session.query(self.tables.Documents).filter_by(project_name=project_name).all()
             for file in files:
                 signed_url = self.supabase.storage.from_(project_name).create_signed_url(file.url, expires_in=3600)
                 file_details.append(
@@ -660,7 +732,7 @@ class DB:
                         "filename": file.filename,
                         "signed_download_url": signed_url['signedURL'],
                         "creation_date": file.creation_date,
-                        "update_date": file.update_date
+                        "last_modified_date": file.last_modified_date
                     }
                 )
             return file_details
@@ -675,10 +747,10 @@ class DB:
         '''
         session = self.Session()
         try:
-            file_url = session.query(self.tables.UploadedFiles).filter_by(project_name=project_name, filename=file_name).first()
+            file_url = session.query(self.tables.Documents).filter_by(project_name=project_name, filename=file_name, source="uploaded_file").first()
             url = file_url.url
             self.supabase.storage.from_(project_name).remove([url])
-            session.query(self.tables.UploadedFiles).filter_by(project_name=project_name, filename=file_name).delete()
+            session.query(self.tables.Documents).filter_by(project_name=project_name, filename=file_name, source="uploaded_file").delete()
             self.remove_by_url(project_name, url)
             session.commit()
             self.logger.info(f"Removed uploaded file: {file_name}")

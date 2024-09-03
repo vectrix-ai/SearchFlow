@@ -18,6 +18,7 @@ if st.button('Submit'):
         
         for i, file in enumerate(uploaded_files):
             bytes_data = file.read()
+            print(file.name)
             # Store locally in a temp folder
             # Empty the uploaded files variable
             files.upload_file(
@@ -37,10 +38,10 @@ if st.button('Submit'):
 
 st.subheader('Uploaded Files')
 uploaded_files = st.session_state.db.list_files(st.session_state.project)
-if len(uploaded_files) > 0:
+if uploaded_files:
     df = pd.DataFrame(uploaded_files)
     st.dataframe(
-        df[["filename", "creation_date", "update_date", "signed_download_url"]], 
+        df[["filename", "creation_date", "last_modified_date", "signed_download_url"]], 
         hide_index=True,
         column_config={
             "signed_download_url": st.column_config.LinkColumn(

@@ -1,4 +1,6 @@
 from .webscraper import WebScraper
-from. chunkdata import chunk_content
 from .unstructured import Files
 from .chrome import ChromeImporter
+from .extraction import ExtractMetaData, ExtractionObject
+
+__all__ = ['WebScraper', 'chunk_content', 'ExtractMetaData', 'ExtractionObject', 'Files', 'ChromeImporter']

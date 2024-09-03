@@ -17,7 +17,7 @@ url = st.text_input("Enter website URL")
 if st.button("Submit"):
     try:
         st.success("Scraping job submitted")
-        scraper = WebScraper(project_name=st.session_state.project)
+        scraper = WebScraper(project_name=st.session_state.project, db=st.session_state.db)
         scraper.get_all_links(base_url=url)
         
     except Exception as e:
@@ -34,7 +34,7 @@ else:
 
 st.subheader('Links to confirm')
 
-webscraper = WebScraper(project_name=st.session_state.project)
+webscraper = WebScraper(project_name=st.session_state.project, db=st.session_state.db)
 
 @st.dialog("Import a single webpage")
 def import_webpage():
