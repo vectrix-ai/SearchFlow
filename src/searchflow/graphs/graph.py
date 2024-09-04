@@ -10,7 +10,9 @@ from searchflow.graphs.utils.nodes import (
     retrieve_documents,
     transform_docs,
     rag_answer,
-    cite_sources
+    cite_sources,
+    sql_agent,
+    rewrite_last_message
 )
 from searchflow import DB
 
@@ -31,18 +33,20 @@ workflow.add_node("retrieve", retrieve)
 workflow.add_node("transform_docs", transform_docs)
 workflow.add_node("rag_answer", rag_answer)
 workflow.add_node("cite_sources", cite_sources)
-
-
+workflow.add_node("sql_agent", sql_agent)
+workflow.add_node("rewrite_last_message", rewrite_last_message)
 
 
 workflow.set_entry_point("detect_intent")
 workflow.add_conditional_edges("detect_intent", decide_answering_path, {
     "greeting": "llm_answer",
     "specific_question": "split_questions",
-    "metadata_query": END,
-        "follow_up_question": "llm_answer"
+    "metadata_query": "sql_agent",
+    "follow_up_question": "llm_answer"
 })
 workflow.add_edge("llm_answer", END)
+workflow.add_edge("sql_agent", "rewrite_last_message")
+workflow.add_edge("rewrite_last_message", END)
 workflow.add_conditional_edges("split_questions", retrieve_documents, ["retrieve"])
 workflow.add_edge("retrieve", "transform_docs")
 workflow.add_edge("transform_docs", "rag_answer")

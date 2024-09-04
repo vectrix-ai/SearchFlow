@@ -8,7 +8,7 @@ class DocumentMetaData(BaseModel):
     file_type: Literal["webpage", "pdf", "docx", "txt", "csv", "other"]
     word_count: int 
     language: Optional[str] = None
-    source: Literal["webpage", "uploaded_file", "OneDrive", "Notion"]
+    source: Literal["webpage", "uploaded_file", "OneDrive", "Notion", "chrome_extension"]
     content_type: Optional[str] = None
     tags: Optional[List[str]] = None
     summary: Optional[str] = None

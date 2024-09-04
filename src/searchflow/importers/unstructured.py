@@ -6,7 +6,7 @@ from typing import List
 from langchain_core.documents import Document
 from searchflow import logger
 from searchflow.db import DB
-from searchflow.importers.extraction import ExtractMetaData, ExtractionObject
+from searchflow.extract.extraction import ExtractMetaData, ExtractionObject
 
 class Files:
     """

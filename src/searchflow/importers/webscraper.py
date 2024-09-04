@@ -12,7 +12,7 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import SpiderLoader
 from searchflow import logger
 from searchflow.db import DB
-from searchflow.importers.extraction import ExtractMetaData, ExtractionObject
+from searchflow.extract.extraction import ExtractMetaData, ExtractionObject
 
 
 

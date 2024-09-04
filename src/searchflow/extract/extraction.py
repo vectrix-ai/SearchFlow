@@ -13,7 +13,7 @@ class ExtractionObject(BaseModel):
     url: str
     project_name: str
     file_type: Literal["webpage", "pdf", "docx", "txt", "csv", "other"]
-    source: Literal["webpage", "uploaded_file", "OneDrive", "Notion"]
+    source: Literal["webpage", "uploaded_file", "OneDrive", "Notion", "chrome_extension"]
     filename: Optional[str] = ""
     creation_date: Optional[datetime] = None
     last_modified_date: Optional[datetime] = None

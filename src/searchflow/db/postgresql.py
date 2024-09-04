@@ -759,3 +759,18 @@ class DB:
             self.logger.error(f"Error removing uploaded file: {e}")
         finally:
             session.close()
+
+    def run_query(self, query: str):
+        '''
+        Run a SQL query on the database
+        '''
+        session = self.Session()
+        try:
+            result = session.execute(text(query))
+            return result
+        except Exception as e:
+            self.logger.error(f"Error running query: {e}")
+            return str(e)
+        finally:
+            session.close()
+            

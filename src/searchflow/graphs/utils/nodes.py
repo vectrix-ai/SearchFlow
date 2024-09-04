@@ -1,17 +1,23 @@
 import uuid
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_cohere.rerank import CohereRerank
 from langchain import hub
 from langchain_core.output_parsers import PydanticToolsParser, JsonOutputParser, StrOutputParser
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage, HumanMessage
+from langchain.prompts.prompt import PromptTemplate
 from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_community.utilities import SQLDatabase
+from langchain_experimental.sql import SQLDatabaseChain
 from typing import List, Sequence
 from langgraph.constants import Send
+from langgraph.prebuilt import create_react_agent
 from searchflow import logger
 from searchflow.graphs.utils.state import OverallState, Intent, QuestionList, QuestionState, CitedSources
 from searchflow.db import DB
+from searchflow.graphs.utils.prompts import Prompts
 
 logger = logger.setup_logger(name="LangGraph", level="INFO")
 db = DB()
@@ -47,7 +53,11 @@ def _rerank_docs(documents : Sequence[Document], question: str) -> Sequence[Docu
 
 def _rag_answer_chain():
         llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0)
-        prompt = hub.pull("answer_question")
+        prompt_template = hub.pull("answer_question")
+        PROMPT = PromptTemplate(
+        input_variables=["input", "dialect"], template=prompt_template
+    )
+
         return prompt | llm | StrOutputParser()
 
 def _setup_cite_sources_chain():
@@ -55,6 +65,18 @@ def _setup_cite_sources_chain():
         llm_with_tools = llm.bind_tools([CitedSources])
         prompt = hub.pull("cite_sources")
         return prompt | llm_with_tools | PydanticToolsParser(tools=[CitedSources])
+
+def _setup_sql_agent_chain():
+    llm = OpenAI(streaming=True)
+    db = DB()
+    db = SQLDatabase(engine=db.engine)
+    prompt_template = Prompts.sql_agent_prompt
+
+    PROMPT = PromptTemplate(
+        input_variables=["input", "dialect"], template=prompt_template
+    )
+
+    return SQLDatabaseChain.from_llm(llm, db, prompt=PROMPT, verbose=True)
 
 async def detect_intent(state :OverallState, config):
     messages = state["messages"]
@@ -210,3 +232,24 @@ async def cite_sources(state: OverallState, config):
         response = await cite_sources_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
 
         return {"cited_sources": response}
+
+async def sql_agent(state: OverallState, config):
+    chain = _setup_sql_agent_chain()
+        # Try this chain up to 3 times in case of error
+    for _ in range(3):
+        try:
+            result = await chain.arun(state["messages"][-1].content)
+            result = AIMessage(result)
+            return {"messages": result}
+        except Exception as e:
+            logger.error(f"Error in SQL agent: {e}")
+
+async def rewrite_last_message(state: OverallState, config):
+    prompt = hub.pull("rewrite_answer")
+    question = state["messages"][-2].content
+    answer = state["messages"][-1].content
+    llm = ChatOpenAI(temperature=0, model="gpt-4o")
+    chain = prompt | llm
+    rewritten_message = await chain.ainvoke({"question": question, "answer": answer})
+    rewritten_message = AIMessage(rewritten_message.content)
+    return {"messages": rewritten_message}
