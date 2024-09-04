@@ -222,7 +222,9 @@ async def cite_sources(state: OverallState, config):
             return {"cited_sources": ""}
         
         for i, doc in enumerate(state["documents"], 1):
-            sources += f"{i}. {doc.page_content}\n\nURL: {doc.metadata['url']}\n SOURCE: {doc.metadata['source']}\n"
+            source = doc.metadata.get('source', 'Unknown')
+            url = doc.metadata.get('url', 'No URL provided')
+            sources += f"{i}. {doc.page_content}\n\nURL: {url}\nSOURCE: {source}\n"
 
         cite_sources_chain = _setup_cite_sources_chain()
 

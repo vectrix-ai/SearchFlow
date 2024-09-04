@@ -5,7 +5,7 @@ FROM mcr.microsoft.com/devcontainers/python:1-3.12-bullseye
 WORKDIR /app
 
 # Install the required system packages
-RUN sudo apt-get update && sudo apt-get install -y libmagic-dev tesseract-ocr libgl1
+RUN sudo apt-get update && sudo apt-get install -y libmagic-dev tesseract-ocr libgl1 poppler-utils
 
 # Install the required python packages
 RUN pip install --no-cache-dir searchflow

@@ -57,7 +57,7 @@ manage_sources = st.Page("manage_sources.py", title="Manage Sources", icon="📚
 if len(st.session_state.projects) == 0:
     pg = st.navigation(
         {
-            "Settings" : [manage_projects]
+            "Settings" : [manage_projects],
         }
     )
 else:
@@ -65,7 +65,7 @@ else:
         {
             "Ask": [chat_page],
             "Sources": [scrape_data, upload_files, manage_sources],
-            "Settings" : [manage_projects]
+            "Settings" : [manage_projects],
         },
     )
 

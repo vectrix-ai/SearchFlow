@@ -1,3 +1,8 @@
+![PyPI - Version](https://img.shields.io/pypi/v/searchflow) ![Website](https://img.shields.io/website?url=https%3A%2F%2Fvectrix.ai) ![GitHub License](https://img.shields.io/github/license/vectrix-ai/SearchFlow)
+ ![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/bselleslagh) ![Docker Image Version (tag)](https://img.shields.io/docker/v/bselleslagh/searchflow/latest)
+
+
+
 # SearchFlow
 
 SearchFlow is an assistant designed to help you index webpages into structured datasets. It leverages various tools and models to scrape, process, and store web content efficiently.
@@ -21,43 +26,67 @@ To set up the development environment, use the provided `Dockerfile` and `.devco
 
 ### Steps
 
-1. **Clone the repository**:
-    ```sh
-    git clone https://github.com/yourusername/searchflow.git
-    cd searchflow
-    ```
 
-2. **Build the Docker container**:
-    ```sh
-    docker build -t searchflow .
-    ```
-
-3. **Run the Docker container**:
-    ```sh
-    docker run -it -p 8501:8501 searchflow
-    ```
 
 ## Usage
 
-### Web Scraping
-
-To scrape a website and index the links:
-
-```python
-from searchflow.importers.webscraper import WebScraper
-scraper = WebScraper(project_name="example_project")
-scraper.get_all_links(base_url="https://example.com")
+Install SearchFlow via pip:
+```bash
+pip install searchflow
 ```
 
-### Document Processing
-
-To upload and process files:
+### Quickstart
+1. **Initialize the Database**
 
 ```python
-from searchflow.importers.file_importer import FileImporter
+from searchflow.db.postgresql import DB
+db = DB()
+db.create_project(project_name="example_project")
+```
+
+2. **Create a project**
+
+```python
+db.create_project(project_name="example_project")
+```
+
+3. **Import Data from a URL**
+
+```python
+from searchflow.importers import WebScraper
+scraper = WebScraper(project_name='MyProject', db=db)
+scraper.full_import("https://example.com", max_pages=100)
+````
+
+4. ** Upload a file to the project **
+
+```python
+from searchflow.importers import Files
+with open("path/to/your/file.pdf", "rb") as f:
+bytes_data = f.read()
 files = Files()
-files.upload_file(document_data=[(b"file_content", "example.pdf")], project_name="example_project")
+files.upload_file(
+document_data=[(bytes_data, "file.pdf")],
+project_name="MyProject",
+inference_type="local"
+)
 ```
+
+5. **List Files in a Project**
+
+```python
+files.list_files(project_name="MyProject")
+```
+
+6. **Remove a File from a Project**
+
+```python
+files.remove_file(project_name="MyProject", file_name="file.pdf")
+```
+
+### Question Answering
+
+
 
 ### Vector Search
 To perform a similarity search:
@@ -67,4 +96,3 @@ from searchflow.db.postgresql import DB
 db = DB()
 results = db.similarity_search(project_name="example_project", query="example query"
 ```
-
