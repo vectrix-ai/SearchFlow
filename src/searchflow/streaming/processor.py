@@ -72,7 +72,7 @@ class StreamProcessor:
                         }
 
             if kind == "on_chat_model_stream":
-                if  event["metadata"]["langgraph_node"] in ["llm_answer", "rag_answer", "sql_agent"]:
+                if  event["metadata"]["langgraph_node"] in ["llm_answer", "rag_answer", "rewrite_last_message"]:
                     yield {
                         "type":"stream",
                         "model_provider": event["metadata"]["ls_provider"],

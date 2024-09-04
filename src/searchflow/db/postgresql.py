@@ -724,7 +724,7 @@ class DB:
         self.logger.info(f"Listing uploaded files for project: {project_name}")
         file_details = []
         try:
-            files = session.query(self.tables.Documents).filter_by(project_name=project_name).all()
+            files = session.query(self.tables.Documents).filter_by(project_name=project_name, source="uploaded_file").all()
             for file in files:
                 signed_url = self.supabase.storage.from_(project_name).create_signed_url(file.url, expires_in=3600)
                 file_details.append(

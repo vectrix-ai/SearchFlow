@@ -54,11 +54,8 @@ def _rerank_docs(documents : Sequence[Document], question: str) -> Sequence[Docu
 def _rag_answer_chain():
         llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0)
         prompt_template = hub.pull("answer_question")
-        PROMPT = PromptTemplate(
-        input_variables=["input", "dialect"], template=prompt_template
-    )
 
-        return prompt | llm | StrOutputParser()
+        return prompt_template | llm | StrOutputParser()
 
 def _setup_cite_sources_chain():
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
@@ -76,7 +73,7 @@ def _setup_sql_agent_chain():
         input_variables=["input", "dialect"], template=prompt_template
     )
 
-    return SQLDatabaseChain.from_llm(llm, db, prompt=PROMPT, verbose=True)
+    return SQLDatabaseChain.from_llm(llm, db, prompt=PROMPT)
 
 async def detect_intent(state :OverallState, config):
     messages = state["messages"]
@@ -160,7 +157,7 @@ async def retrieve(state: QuestionState, config):
                     "type": "search", 
                     "url": doc["url"],
                     "uuid": str(uuid.uuid4()),
-                    "source_type": "web_search"
+                    "source": "web_search"
                     })
             documents.append(document)
     
