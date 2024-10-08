@@ -20,7 +20,10 @@ def remove_project_data():
     if st.button('Yes, remove the project and all data', type="primary"):
         st.session_state.db.remove_project(project)
         st.session_state.projects = st.session_state.db.list_projects()
-        st.session_state.project = st.session_state.db.list_projects()[0]
+        try:
+            st.session_state.project = st.session_state.db.list_projects()[0]
+        except IndexError:
+            st.session_state.project = None
         st.rerun()
 
 col1, col2 = st.columns(2)

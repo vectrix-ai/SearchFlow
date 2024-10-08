@@ -73,7 +73,16 @@ def _setup_sql_agent_chain():
         input_variables=["input", "dialect"], template=prompt_template
     )
 
-    return SQLDatabaseChain.from_llm(llm, db, prompt=PROMPT)
+def _question_rewriter_chain():
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    prompt = hub.pull("vectrix/question_rewriter")
+    return prompt | llm | StrOutputParser()
+
+
+def _setup_hallucination_grader():
+    prompt = hub.pull("vectrix/hallucination_prompt")
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    return prompt | llm
 
 async def detect_intent(state :OverallState, config):
     messages = state["messages"]
@@ -209,7 +218,7 @@ async def rag_answer(state: OverallState, config):
     response = await final_answer_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
     response = AIMessage(content=response)
 
-    return {"messages": response}
+    return {"temporary_answer": response}
 
 
 async def cite_sources(state: OverallState, config):
@@ -231,6 +240,31 @@ async def cite_sources(state: OverallState, config):
         response = await cite_sources_chain.ainvoke({"SOURCES": sources, "QUESTION": question})
 
         return {"cited_sources": response}
+
+async def hallucination_grader(state: OverallState, config):
+    answer = state["temporary_answer"]
+    documents = state["documents"]
+    hallucination_grader = _setup_hallucination_grader()
+    response = await hallucination_grader.ainvoke({"documents": documents, "generation": answer})
+    grade = response.binary_score
+
+    if grade == "yes":
+        logger.info("Generation is grounded in facts")
+        return "no_hallucinations"
+    else:
+        logger.info("Generation is hallucinated")
+        return "hallucinations"
+    
+async def rewrite_question(state: OverallState, config):
+    question_rewriter = _question_rewriter_chain()
+    question = state["messages"][-1].content
+    rewritten_question = await question_rewriter.ainvoke({"question": question})
+    return {"messages": rewritten_question}
+
+async def final_answer(state: OverallState, config):
+    final_answer = state["temporary_answer"]
+    return {"messages": final_answer}
+
 
 async def sql_agent(state: OverallState, config):
     chain = _setup_sql_agent_chain()

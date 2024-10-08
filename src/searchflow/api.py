@@ -1,7 +1,9 @@
 import os
+import time
 from typing import List
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from searchflow.db import DB
@@ -64,6 +66,71 @@ async def receive_html(content: HTMLContent):
 @app.get("/projects", response_model=List[str])
 async def get_projects():
     return db.list_projects()
+
+
+@app.get("/models/1")
+async def models(authorization: str = Header(None)):
+    json = {
+        "object": "list",
+        "data": [
+            {
+                "id": "searchflow-test1-graph-model",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "organization-owner"
+            },
+            {
+                "id": "searchflow-test2-graph-model",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "organization-owner",
+            },
+            {
+                "id": "searchflow-test3-graph-model",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "openai"
+            },
+        ],
+        "object": "list"
+    }
+    return JSONResponse(content=json)
+
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: Request):
+    # Parse the incoming JSON request
+    data = await request.json()
+    
+    # Extract relevant information (not used in this dummy response)
+    messages = data.get("messages", [])
+    model = data.get("model", "default_model")
+    
+    # Prepare a dummy response
+    dummy_response = {
+        "id": "chatcmpl-123",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "This is a dummy response from the SearchFlow API."
+                },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 9,
+            "completion_tokens": 12,
+            "total_tokens": 21
+        }
+    }
+    
+    return JSONResponse(content=dummy_response)
 
 if __name__ == "__main__":
     import uvicorn

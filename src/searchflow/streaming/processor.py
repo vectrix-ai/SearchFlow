@@ -1,6 +1,7 @@
 from psycopg_pool import AsyncConnectionPool
 from langsmith import Client
 from searchflow import logger
+import time
 
 
 class StreamProcessor:
@@ -59,59 +60,35 @@ class StreamProcessor:
         
         async for event in self.graph.astream_events({"messages": messages}, version="v1", config=config):
             kind = event["event"]
-            if "langgraph_node" in event["metadata"]:
-                if event["metadata"]["langgraph_node"] not in current_langgraph_node:
-                    current_langgraph_node.append(event["metadata"]["langgraph_node"])
-                    yield {
-                        "type":"progress",
-                        "model_provider": "",
-                        "model_name": "",
-                        "run_id" : event["run_id"],
-                        "graph_node" : event["metadata"]["langgraph_node"],
-                        "data": f"Processing {event['metadata']['langgraph_node']}..."
-                        }
 
             if kind == "on_chat_model_stream":
-                if  event["metadata"]["langgraph_node"] in ["llm_answer", "rag_answer", "rewrite_last_message"]:
+                if event["metadata"]["langgraph_node"] in ["llm_answer", "rag_answer", "rewrite_last_message"]:
+                    chunk_content = event["data"]["chunk"].content
                     yield {
-                        "type":"stream",
-                        "model_provider": event["metadata"]["ls_provider"],
-                        "model_name": event["metadata"]["ls_model_name"],
-                        "run_id" : event["run_id"],
-                        "graph_node" : event["metadata"]["langgraph_node"],
-                        "data": event["data"]["chunk"].content
+                        "id": event["run_id"],
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": event["metadata"]["ls_model_name"],
+                        "system_fingerprint": "fp_" + event["run_id"][:8],
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk_content},
+                            "logprobs": None,
+                            "finish_reason": None
+                        }]
                     }
 
-            if kind == "on_chain_end":
-                if event["name"] == "cite_sources":
-                    data = []
-                    try:
-                        for source in event["data"]["output"]['cited_sources']:
-                            data.append(
-                                {
-                                    "source": source.source,
-                                    "url": source.url
-                                }
-                            )
-                    except:
-                        data = []
-
-                    run_url = ""
-
-                    try :
-                        run_url = client.read_run(event["run_id"]).url
-
-                    except Exception as e:
-                        self.logger.error(e)
-
-                    finally:
-                        yield {
-                            "type":"final_output",
-                            "model_provider": "",
-                            "model_name": "",
-                            "run_id" : event["run_id"],
-                            "graph_node" : event["metadata"]["langgraph_node"],
-                            "data": data,
-                            "trace_id": event["run_id"],
-                            "trace_url": run_url
-                            }
+        # After the loop, send the final chunk
+        yield {
+            "id": event["run_id"],
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": "SearchFlow Custom Graph Model",
+            "system_fingerprint": "fp_" + event["run_id"][:8],
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "logprobs": None,
+                "finish_reason": "stop"
+            }]
+        }

@@ -38,6 +38,7 @@ class CitedSources(BaseModel):
 
 class OverallState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    temporary_answer: str
     intent: Literal["specific_question", "greeting", "metadata_query", "follow_up_question"]
     question_list: List[str]
     documents: Annotated[List[Document], operator.add]

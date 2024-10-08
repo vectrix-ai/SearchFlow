@@ -12,7 +12,10 @@ from searchflow.graphs.utils.nodes import (
     rag_answer,
     cite_sources,
     sql_agent,
-    rewrite_last_message
+    rewrite_last_message,
+    hallucination_grader,
+    rewrite_question,
+    final_answer
 )
 from searchflow import DB
 
@@ -35,6 +38,8 @@ workflow.add_node("rag_answer", rag_answer)
 workflow.add_node("cite_sources", cite_sources)
 workflow.add_node("sql_agent", sql_agent)
 workflow.add_node("rewrite_last_message", rewrite_last_message)
+workflow.add_node("rewrite_question", rewrite_question)
+workflow.add_node("final_answer", final_answer)
 
 
 workflow.set_entry_point("detect_intent")
@@ -51,10 +56,14 @@ workflow.add_conditional_edges("split_questions", retrieve_documents, ["retrieve
 workflow.add_edge("retrieve", "transform_docs")
 workflow.add_edge("transform_docs", "rag_answer")
 workflow.add_edge("transform_docs", "cite_sources")
-workflow.add_edge("rag_answer", END)
+workflow.add_conditional_edges("rag_answer", hallucination_grader, {
+    "no_hallucinations": "rewrite_question",
+    "hallucinations": "final_answer"
+})
+workflow.add_edge("rewrite_question", "rag_answer")
 workflow.add_edge("cite_sources", END)
-workflow.set_finish_point("rag_answer")
-
+workflow.add_edge("final_answer", END)
+#workflow.set_finish_point("rag_answer")
 default_graph = workflow.compile()
 
 __all__ = ['default_graph']
