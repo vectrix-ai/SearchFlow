@@ -11,6 +11,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
 from langchain_experimental.sql import SQLDatabaseChain
+from langchain_ollama.chat_models import ChatOllama
 from typing import List, Sequence
 from langgraph.constants import Send
 from langgraph.prebuilt import create_react_agent
@@ -23,13 +24,13 @@ logger = logger.setup_logger(name="LangGraph", level="INFO")
 db = DB()
 
 def _setup_intent_detection():
-    prompt = hub.pull("intent_detection")
+    prompt = hub.pull("vectrix/intent_detection")
     llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620")
     llm_with_tools = llm.bind_tools(tools=[Intent])
     return prompt | llm_with_tools
 
 def _setup_question_detection():
-    prompt = hub.pull("split_questions")
+    prompt = hub.pull("vectrix/split_questions")
     llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620")
     llm_with_tools = llm.bind_tools(tools=[QuestionList])
     return prompt | llm_with_tools
@@ -246,14 +247,17 @@ async def hallucination_grader(state: OverallState, config):
     documents = state["documents"]
     hallucination_grader = _setup_hallucination_grader()
     response = await hallucination_grader.ainvoke({"documents": documents, "generation": answer})
-    grade = response.binary_score
+    grade = response["binary_score"]
 
-    if grade == "yes":
+    if grade == True:
         logger.info("Generation is grounded in facts")
         return "no_hallucinations"
-    else:
+    elif grade == False:
         logger.info("Generation is hallucinated")
         return "hallucinations"
+    else:
+        logger.info("Unable to grade hallucinations")
+        return "no_hallucinations"
     
 async def rewrite_question(state: OverallState, config):
     question_rewriter = _question_rewriter_chain()

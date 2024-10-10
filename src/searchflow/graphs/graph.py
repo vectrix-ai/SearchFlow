@@ -57,10 +57,10 @@ workflow.add_edge("retrieve", "transform_docs")
 workflow.add_edge("transform_docs", "rag_answer")
 workflow.add_edge("transform_docs", "cite_sources")
 workflow.add_conditional_edges("rag_answer", hallucination_grader, {
-    "no_hallucinations": "rewrite_question",
-    "hallucinations": "final_answer"
+    "no_hallucinations": "final_answer",
+    "hallucinations": "rewrite_question"
 })
-workflow.add_edge("rewrite_question", "rag_answer")
+workflow.add_edge("rewrite_question", "split_questions")
 workflow.add_edge("cite_sources", END)
 workflow.add_edge("final_answer", END)
 #workflow.set_finish_point("rag_answer")
